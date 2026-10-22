@@ -48,9 +48,18 @@ impl SystemMonitorApp {
         );
 
         draw_string(buf, screen_w, screen_h, "--- Rede e Seguranca (JinnWall) ---", win_x + 12, win_y + 164, COLOR_CYAN, Some(COLOR_CARD));
-        draw_string(buf, screen_w, screen_h, "Rede     : VirtIO-Net (PCI) | IP: 10.0.2.15", win_x + 12, win_y + 184, COLOR_EMERALD, Some(COLOR_CARD));
-        draw_string(buf, screen_w, screen_h, "Firewall : JinnWall SPI Ativo (DROP Unsolicited)", win_x + 12, win_y + 204, COLOR_CYAN, Some(COLOR_CARD));
-        draw_string(buf, screen_w, screen_h, "Recursos : Limites de Frames, FDs e Sockets Ativos", win_x + 12, win_y + 224, COLOR_PURPLE, Some(COLOR_CARD));
+        
+        let ip0 = stats.net_ip[0] as usize;
+        let ip1 = stats.net_ip[1] as usize;
+        let ip2 = stats.net_ip[2] as usize;
+        let ip3 = stats.net_ip[3] as usize;
+        draw_label_and_num(buf, screen_w, screen_h, "Rede IP  : ", ip0, ".", win_x + 12, win_y + 184, COLOR_EMERALD, Some(COLOR_CARD));
+        draw_label_and_num(buf, screen_w, screen_h, "", ip1, ".", win_x + 110, win_y + 184, COLOR_EMERALD, Some(COLOR_CARD));
+        draw_label_and_num(buf, screen_w, screen_h, "", ip2, ".", win_x + 130, win_y + 184, COLOR_EMERALD, Some(COLOR_CARD));
+        draw_label_and_num(buf, screen_w, screen_h, "", ip3, " (VirtIO)", win_x + 150, win_y + 184, COLOR_EMERALD, Some(COLOR_CARD));
+
+        draw_label_and_num(buf, screen_w, screen_h, "Firewall : Conntrack ", stats.jinnwall_active_conns, " fluxos ativos", win_x + 12, win_y + 204, COLOR_CYAN, Some(COLOR_CARD));
+        draw_label_and_num(buf, screen_w, screen_h, "Defesas  : Bloqueios ", stats.jinnwall_drops as usize, " pacotes DROP", win_x + 12, win_y + 224, COLOR_PURPLE, Some(COLOR_CARD));
         draw_string(buf, screen_w, screen_h, "Seguranca: Ring 0 (Kernel) / Ring 3 (User ELF64)", win_x + 12, win_y + 244, COLOR_TEXT_MUTED, Some(COLOR_CARD));
     }
 }

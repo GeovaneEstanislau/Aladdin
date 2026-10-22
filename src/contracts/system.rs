@@ -8,6 +8,9 @@ pub struct SystemStats {
     pub used_ram_mb: usize,
     pub total_ram_mb: usize,
     pub current_tick: u64,
+    pub net_ip: [u8; 4],
+    pub jinnwall_active_conns: usize,
+    pub jinnwall_drops: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
