@@ -134,3 +134,42 @@ fn test_client_window_buffer_and_title() {
     assert_eq!(damage.width, 320);
     assert!(wm.client_buffers[id].is_none());
 }
+
+#[test]
+fn test_client_window_lifecycle_and_helpers() {
+    let mut wm = WindowManager::new();
+
+    // 1. Cria janela com dimensões úteis de cliente (320 x 200)
+    let win_id = wm.create_client_window(101, "Aplicacao Ring 3", 50, 50, 320, 200)
+        .expect("Deveria criar janela cliente via helper");
+    assert_eq!(win_id, 0);
+
+    let win = wm.windows[win_id].as_ref().unwrap();
+    assert_eq!(win.title_str(), "Aplicacao Ring 3");
+    assert_eq!(win.owner_pid, Some(101));
+    assert_eq!(win.client_width(), 320);
+    assert_eq!(win.client_height(), 200);
+
+    // 2. Atualiza buffer de cliente com dados válidos
+    let expected_len = 320 * 200;
+    let mut fake_buffer = alloc::vec![0x0012_3456u32; expected_len];
+    fake_buffer[0] = 0x00FF_0000;
+
+    let update_res = wm.update_client_buffer(101, win_id, &fake_buffer);
+    assert!(update_res.is_ok());
+    assert_eq!(wm.client_buffers[win_id].as_ref().unwrap()[0], 0x00FF_0000);
+
+    // Tentativa de outro PID atualizar deve falhar com permissão negada
+    let fraud_res = wm.update_client_buffer(999, win_id, &fake_buffer);
+    assert!(fraud_res.is_err());
+
+    // Tentativa de fechar por outro PID deve falhar
+    let fraud_close = wm.close_client_window(999, win_id);
+    assert!(fraud_close.is_err());
+
+    // 3. Fechamento seguro pelo proprietário legítimo
+    let ok_close = wm.close_client_window(101, win_id);
+    assert!(ok_close.is_ok());
+    assert!(wm.windows[win_id].is_none());
+    assert!(wm.client_buffers[win_id].is_none());
+}

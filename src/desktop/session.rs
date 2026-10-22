@@ -49,6 +49,7 @@ pub struct AladdinSession {
     pub cursor_y: usize,
     pub cursor_saved_bg: [u32; CURSOR_W * CURSOR_H],
     pub cursor_valid: bool,
+    pub client_damaged: bool,
 }
 
 impl AladdinSession {
@@ -69,11 +70,59 @@ impl AladdinSession {
             cursor_y: 384,
             cursor_saved_bg: [0; CURSOR_W * CURSOR_H],
             cursor_valid: false,
+            client_damaged: false,
         };
 
         session.init_default_windows();
         session.term.init_defaults();
         session
+    }
+
+    pub fn create_client_window(
+        &mut self,
+        owner_pid: usize,
+        title: &str,
+        client_w: usize,
+        client_h: usize,
+    ) -> Result<usize, ()> {
+        let count = self.wm.windows.iter().filter(|w| w.is_some()).count();
+        let x = 80 + (count * 28);
+        let y = 60 + (count * 24);
+        let res = self.wm.create_client_window(owner_pid, title, x, y, client_w, client_h);
+        if res.is_ok() {
+            self.client_damaged = true;
+        }
+        res
+    }
+
+    pub fn update_client_buffer(
+        &mut self,
+        owner_pid: usize,
+        win_id: usize,
+        buffer: &[u32],
+    ) -> Result<(), ()> {
+        let res = self.wm.update_client_buffer(owner_pid, win_id, buffer);
+        if res.is_ok() {
+            self.client_damaged = true;
+        }
+        res
+    }
+
+    pub fn close_client_window(
+        &mut self,
+        owner_pid: usize,
+        win_id: usize,
+    ) -> Result<(), ()> {
+        let res = self.wm.close_client_window(owner_pid, win_id);
+        if res.is_ok() {
+            self.client_damaged = true;
+        }
+        res
+    }
+
+    pub fn close_windows_for_pid(&mut self, pid: usize) {
+        self.wm.close_all_for_pid(pid);
+        self.client_damaged = true;
     }
 
     fn init_default_windows(&mut self) {
@@ -455,7 +504,11 @@ impl AladdinSession {
                 if let Some(win) = self.wm.windows[clicked_idx].as_mut() {
                     // Controles de janela
                     if win.is_in_close_btn(mx, my) {
+                        let is_client = win.owner_pid.is_some();
                         win.is_open = false;
+                        if is_client {
+                            self.wm.close_window(clicked_idx);
+                        }
                         return (false, None);
                     }
                     if win.is_in_min_btn(mx, my) {
@@ -642,9 +695,10 @@ impl AladdinSession {
             let button_changed = buttons != last_btn;
             let time_changed = current_ticks.saturating_sub(last_ticks) >= 50; // Atualiza a cada 500ms
 
-            let need_scene_redraw = button_changed || key_pressed || dragging_any || time_changed;
+            let need_scene_redraw = button_changed || key_pressed || dragging_any || time_changed || self.client_damaged;
 
             if need_scene_redraw {
+                self.client_damaged = false;
                 let _ = self.erase_cursor(backbuffer, screen_w, screen_h);
                 self.render_scene(backbuffer, screen_w, screen_h, sys, mx, my);
                 let _ = self.draw_cursor(backbuffer, screen_w, screen_h, mx, my);

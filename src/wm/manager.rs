@@ -67,6 +67,72 @@ impl WindowManager {
         None
     }
 
+    pub fn create_client_window(
+        &mut self,
+        owner_pid: usize,
+        title: &str,
+        x: usize,
+        y: usize,
+        client_w: usize,
+        client_h: usize,
+    ) -> Result<usize, ()> {
+        let mut win = Window::new_with_client_size(0, title, x, y, client_w, client_h);
+        win.owner_pid = Some(owner_pid);
+        let id = self.open_window(win)?;
+        let client_pixels = client_w * client_h;
+        self.client_buffers[id] = Some(alloc::vec![0x000F_172A; client_pixels]);
+        Ok(id)
+    }
+
+    pub fn update_client_buffer(
+        &mut self,
+        owner_pid: usize,
+        win_id: usize,
+        buffer: &[u32],
+    ) -> Result<(), ()> {
+        if win_id >= MAX_WINDOWS { return Err(()); }
+        if let Some(win) = self.windows[win_id].as_ref() {
+            if win.owner_pid != Some(owner_pid) {
+                return Err(());
+            }
+            let expected_len = win.client_width() * win.client_height();
+            if buffer.len() != expected_len {
+                return Err(());
+            }
+            if let Some(client_buf) = self.client_buffers[win_id].as_mut() {
+                client_buf.copy_from_slice(buffer);
+                return Ok(());
+            }
+        }
+        Err(())
+    }
+
+    pub fn close_client_window(
+        &mut self,
+        owner_pid: usize,
+        win_id: usize,
+    ) -> Result<(), ()> {
+        if win_id >= MAX_WINDOWS { return Err(()); }
+        if let Some(win) = self.windows[win_id].as_ref() {
+            if win.owner_pid != Some(owner_pid) {
+                return Err(());
+            }
+            self.close_window(win_id);
+            return Ok(());
+        }
+        Err(())
+    }
+
+    pub fn close_all_for_pid(&mut self, pid: usize) {
+        for i in 0..MAX_WINDOWS {
+            if let Some(win) = self.windows[i].as_ref() {
+                if win.owner_pid == Some(pid) {
+                    self.close_window(i);
+                }
+            }
+        }
+    }
+
     pub fn find_window_at(&self, px: usize, py: usize) -> Option<usize> {
         // Itera de cima para baixo no Z-order
         for &idx in self.order.iter().rev() {

@@ -67,6 +67,12 @@ impl Window {
         }
     }
 
+    pub fn new_with_client_size(id: usize, title: &str, x: usize, y: usize, client_w: usize, client_h: usize) -> Self {
+        let total_w = client_w + 2;
+        let total_h = client_h + TITLE_BAR_HEIGHT + 2;
+        Self::new(id, title, x, y, total_w, total_h)
+    }
+
     pub fn title_str(&self) -> &str {
         core::str::from_utf8(&self.title[..self.title_len]).unwrap_or("Janela")
     }
