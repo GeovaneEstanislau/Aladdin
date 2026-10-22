@@ -1,4 +1,6 @@
-//! Renderização de Texto com Fonte Bitmap 8x8
+//! Renderização de Texto com Fonte Bitmap 8x8 e Suporte a Recorte (Clipping)
+
+use crate::compositor::ClipRect;
 
 pub const FONT_WIDTH: usize = 8;
 pub const FONT_HEIGHT: usize = 8;
@@ -22,6 +24,20 @@ pub fn draw_char(
     fg: u32,
     bg: Option<u32>,
 ) {
+    draw_char_clipped(buf, screen_w, screen_h, ch, x, y, fg, bg, None);
+}
+
+pub fn draw_char_clipped(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    ch: u8,
+    x: usize,
+    y: usize,
+    fg: u32,
+    bg: Option<u32>,
+    clip: Option<&ClipRect>,
+) {
     if x >= screen_w || y >= screen_h { return; }
     let glyph = get_glyph(ch);
     let max_y = (y + FONT_HEIGHT).min(screen_h);
@@ -35,6 +51,11 @@ pub fn draw_char(
         for x_offset in 0..8 {
             let cx = x + x_offset;
             if cx >= max_x { break; }
+
+            if let Some(c) = clip {
+                if !c.contains_pixel(cx, cy) { continue; }
+            }
+
             if (row_byte & (1 << (7 - x_offset))) != 0 {
                 buf[row_ptr + cx] = fg;
             } else if let Some(bg_color) = bg {
@@ -49,14 +70,28 @@ pub fn draw_string(
     screen_w: usize,
     screen_h: usize,
     text: &str,
-    mut x: usize,
+    x: usize,
     y: usize,
     fg: u32,
     bg: Option<u32>,
 ) {
+    draw_string_clipped(buf, screen_w, screen_h, text, x, y, fg, bg, None);
+}
+
+pub fn draw_string_clipped(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    text: &str,
+    mut x: usize,
+    y: usize,
+    fg: u32,
+    bg: Option<u32>,
+    clip: Option<&ClipRect>,
+) {
     for b in text.bytes() {
         if x + FONT_WIDTH > screen_w { break; }
-        draw_char(buf, screen_w, screen_h, b, x, y, fg, bg);
+        draw_char_clipped(buf, screen_w, screen_h, b, x, y, fg, bg, clip);
         x += FONT_WIDTH;
     }
 }

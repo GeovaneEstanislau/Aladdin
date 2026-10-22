@@ -1,22 +1,22 @@
-//! Gerenciador de Janelas, Z-Order e Decorações de Superfície
+//! Gerenciador Dinâmico de Janelas, Z-Order e Decorações de Superfície
 
 use crate::compositor::*;
 use crate::font::*;
 use crate::contracts::system::CapabilityMode;
 use super::window::{Window, TITLE_BAR_HEIGHT};
 
-pub const MAX_WINDOWS: usize = 4;
+pub const MAX_WINDOWS: usize = 8;
 
 pub struct WindowManager {
     pub windows: [Option<Window>; MAX_WINDOWS],
-    pub order: [usize; MAX_WINDOWS], // 0 = fundo, 3 = topo
+    pub order: [usize; MAX_WINDOWS], // 0 = fundo, MAX-1 = topo
 }
 
 impl WindowManager {
     pub const fn new() -> Self {
         Self {
             windows: [None; MAX_WINDOWS],
-            order: [0, 1, 2, 3],
+            order: [0, 1, 2, 3, 4, 5, 6, 7],
         }
     }
 
@@ -39,6 +39,28 @@ impl WindowManager {
             }
             self.order[MAX_WINDOWS - 1] = target_idx;
         }
+    }
+
+    pub fn open_window(&mut self, mut window: Window) -> Result<usize, ()> {
+        // Encontra primeiro slot livre
+        for i in 0..MAX_WINDOWS {
+            if self.windows[i].is_none() {
+                window.id = i;
+                self.windows[i] = Some(window);
+                self.bring_to_front(i);
+                return Ok(i);
+            }
+        }
+        Err(())
+    }
+
+    pub fn close_window(&mut self, idx: usize) -> Option<DirtyRect> {
+        if idx < MAX_WINDOWS {
+            if let Some(win) = self.windows[idx].take() {
+                return Some(win.bounds());
+            }
+        }
+        None
     }
 
     pub fn find_window_at(&self, px: usize, py: usize) -> Option<usize> {
@@ -125,21 +147,24 @@ impl WindowManager {
         // Trio de botões semáforo (Traffic-Light / elementary OS)
         let btn_y = win.y + 4;
 
-        // Minimizar [-] em âmbar
-        let btn_min_x = win.x + win.width.saturating_sub(64);
-        fill_rect(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, COLOR_AMBER);
-        draw_char(buf, screen_w, screen_h, b'-', btn_min_x + 4, btn_y, COLOR_WHITE, Some(COLOR_AMBER));
+        if win.can_minimize {
+            let btn_min_x = win.x + win.width.saturating_sub(64);
+            fill_rect(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, COLOR_AMBER);
+            draw_char(buf, screen_w, screen_h, b'-', btn_min_x + 4, btn_y, COLOR_WHITE, Some(COLOR_AMBER));
+        }
 
-        // Maximizar [+] / [^] em esmeralda
-        let btn_max_x = win.x + win.width.saturating_sub(44);
-        let max_char = if win.is_maximized { b'^' } else { b'+' };
-        fill_rect(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, COLOR_EMERALD);
-        draw_char(buf, screen_w, screen_h, max_char, btn_max_x + 4, btn_y, COLOR_WHITE, Some(COLOR_EMERALD));
+        if win.can_maximize {
+            let btn_max_x = win.x + win.width.saturating_sub(44);
+            let max_char = if win.is_maximized { b'^' } else { b'+' };
+            fill_rect(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, COLOR_EMERALD);
+            draw_char(buf, screen_w, screen_h, max_char, btn_max_x + 4, btn_y, COLOR_WHITE, Some(COLOR_EMERALD));
+        }
 
-        // Fechar [X] em rubi
-        let btn_close_x = win.x + win.width.saturating_sub(24);
-        fill_rect(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, COLOR_RUBY);
-        draw_char(buf, screen_w, screen_h, b'X', btn_close_x + 4, btn_y, COLOR_WHITE, Some(COLOR_RUBY));
+        if win.can_close {
+            let btn_close_x = win.x + win.width.saturating_sub(24);
+            fill_rect(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, COLOR_RUBY);
+            draw_char(buf, screen_w, screen_h, b'X', btn_close_x + 4, btn_y, COLOR_WHITE, Some(COLOR_RUBY));
+        }
 
         // Corpo da janela
         fill_rect(

@@ -1,6 +1,7 @@
-//! Estrutura e Comportamento de Janelas
+//! Estrutura e Comportamento de Janelas com Recorte de Superfície
 
 use crate::contracts::framebuffer::DirtyRect;
+use crate::compositor::ClipRect;
 
 pub const TITLE_BAR_HEIGHT: usize = 24;
 pub const BTN_SIZE: usize = 16;
@@ -23,6 +24,9 @@ pub struct Window {
     pub is_dragging: bool,
     pub drag_offset_x: usize,
     pub drag_offset_y: usize,
+    pub can_minimize: bool,
+    pub can_maximize: bool,
+    pub can_close: bool,
 }
 
 impl Window {
@@ -44,11 +48,23 @@ impl Window {
             is_dragging: false,
             drag_offset_x: 0,
             drag_offset_y: 0,
+            can_minimize: true,
+            can_maximize: true,
+            can_close: true,
         }
     }
 
     pub fn bounds(&self) -> DirtyRect {
         DirtyRect::new(self.x, self.y, self.width, self.height)
+    }
+
+    /// Retorna a região de recorte da área de cliente (interior da janela)
+    pub fn client_clip(&self) -> ClipRect {
+        let x0 = self.x + 1;
+        let y0 = self.y + TITLE_BAR_HEIGHT + 1;
+        let x1 = (self.x + self.width).saturating_sub(1);
+        let y1 = (self.y + self.height).saturating_sub(1);
+        ClipRect::new(x0, y0, x1, y1)
     }
 
     pub fn contains_point(&self, px: usize, py: usize) -> bool {
@@ -62,24 +78,28 @@ impl Window {
     }
 
     pub fn is_in_min_btn(&self, px: usize, py: usize) -> bool {
+        if !self.can_minimize { return false; }
         let btn_x = self.x + self.width.saturating_sub(64);
         let btn_y = self.y + 4;
         px >= btn_x && px < btn_x + BTN_SIZE && py >= btn_y && py < btn_y + BTN_SIZE
     }
 
     pub fn is_in_max_btn(&self, px: usize, py: usize) -> bool {
+        if !self.can_maximize { return false; }
         let btn_x = self.x + self.width.saturating_sub(44);
         let btn_y = self.y + 4;
         px >= btn_x && px < btn_x + BTN_SIZE && py >= btn_y && py < btn_y + BTN_SIZE
     }
 
     pub fn is_in_close_btn(&self, px: usize, py: usize) -> bool {
+        if !self.can_close { return false; }
         let btn_x = self.x + self.width.saturating_sub(24);
         let btn_y = self.y + 4;
         px >= btn_x && px < btn_x + BTN_SIZE && py >= btn_y && py < btn_y + BTN_SIZE
     }
 
     pub fn toggle_maximize(&mut self, screen_w: usize, screen_h: usize, top_panel_h: usize, dock_h: usize) -> DirtyRect {
+        if !self.can_maximize { return self.bounds(); }
         let old_rect = self.bounds();
         if self.is_maximized {
             self.x = self.saved_x;

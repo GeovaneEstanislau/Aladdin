@@ -4,7 +4,7 @@ use crate::compositor::*;
 use crate::font::*;
 use crate::wm::WindowManager;
 
-pub const DOCK_WIDTH: usize = 480;
+pub const DOCK_WIDTH: usize = 580;
 pub const DOCK_HEIGHT: usize = 44;
 
 pub fn render_dock(
@@ -28,7 +28,8 @@ pub fn render_dock(
         ("[>] Console", dock_x + 100, 1),
         ("[~] Arquivos", dock_x + 194, 3),
         ("[*] Apps U3", dock_x + 288, usize::MAX),
-        ("[?] Sobre", dock_x + 382, 2),
+        ("[%] Ajustes", dock_x + 382, 4),
+        ("[?] Sobre", dock_x + 476, 2),
     ];
 
     for &(label, slot_x, win_id) in slots.iter() {

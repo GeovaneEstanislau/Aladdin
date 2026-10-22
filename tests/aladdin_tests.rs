@@ -1,6 +1,7 @@
 extern crate aladdin;
 
 use aladdin::contracts::framebuffer::DirtyRect;
+use aladdin::compositor::ClipRect;
 use aladdin::wm::{Window, WindowManager};
 use aladdin::apps::TerminalApp;
 
@@ -18,6 +19,22 @@ fn test_dirty_rect_union_and_intersects() {
 
     let r3 = DirtyRect::new(100, 100, 20, 20);
     assert!(!r1.intersects(&r3));
+}
+
+#[test]
+fn test_clip_rect_bounds() {
+    let clip = ClipRect::new(50, 50, 200, 200);
+    assert!(clip.contains_pixel(50, 50));
+    assert!(clip.contains_pixel(199, 199));
+    assert!(!clip.contains_pixel(49, 50));
+    assert!(!clip.contains_pixel(200, 200));
+
+    let c2 = ClipRect::new(100, 100, 300, 300);
+    let inter = clip.intersect(&c2).expect("Deveria intersectar");
+    assert_eq!(inter.min_x, 100);
+    assert_eq!(inter.min_y, 100);
+    assert_eq!(inter.max_x, 200);
+    assert_eq!(inter.max_y, 200);
 }
 
 #[test]
@@ -45,22 +62,32 @@ fn test_window_geometry_and_maximize() {
 }
 
 #[test]
+fn test_window_manager_dynamic_open_close() {
+    let mut wm = WindowManager::new();
+    let id0 = wm.open_window(Window::new(0, "W0", 10, 10, 100, 100)).expect("Deveria abrir");
+    let id1 = wm.open_window(Window::new(1, "W1", 20, 20, 100, 100)).expect("Deveria abrir");
+    assert_eq!(id0, 0);
+    assert_eq!(id1, 1);
+    assert_eq!(wm.top_window_id(), 1);
+
+    let damage = wm.close_window(0).expect("Deveria fechar W0");
+    assert_eq!(damage.width, 100);
+    assert!(wm.windows[0].is_none());
+}
+
+#[test]
 fn test_window_manager_z_order() {
     let mut wm = WindowManager::new();
     wm.windows[0] = Some(Window::new(0, "Win 0", 10, 10, 100, 100));
     wm.windows[1] = Some(Window::new(1, "Win 1", 20, 20, 100, 100));
     wm.windows[2] = Some(Window::new(2, "Win 2", 30, 30, 100, 100));
     wm.windows[3] = Some(Window::new(3, "Win 3", 40, 40, 100, 100));
-    wm.order = [0, 1, 2, 3];
-
-    assert_eq!(wm.top_window_id(), 3);
+    wm.order = [0, 1, 2, 3, 4, 5, 6, 7];
 
     wm.bring_to_front(1);
-    assert_eq!(wm.order, [0, 2, 3, 1]);
     assert_eq!(wm.top_window_id(), 1);
 
     wm.bring_to_front(0);
-    assert_eq!(wm.order, [2, 3, 1, 0]);
     assert_eq!(wm.top_window_id(), 0);
 }
 

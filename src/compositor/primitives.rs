@@ -1,10 +1,28 @@
-//! Primitivas Gráficas 2D de Alta Performance para o Backbuffer
+//! Primitivas Gráficas 2D de Alta Performance com Suporte a Recorte (Clipping)
+
+use super::damage::ClipRect;
 
 #[inline]
 pub fn draw_pixel(buf: &mut [u32], screen_w: usize, screen_h: usize, x: usize, y: usize, color: u32) {
     if x < screen_w && y < screen_h {
         buf[y * screen_w + x] = color;
     }
+}
+
+#[inline]
+pub fn draw_pixel_clipped(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    x: usize,
+    y: usize,
+    color: u32,
+    clip: Option<&ClipRect>,
+) {
+    if let Some(c) = clip {
+        if !c.contains_pixel(x, y) { return; }
+    }
+    draw_pixel(buf, screen_w, screen_h, x, y, color);
 }
 
 pub fn fill_rect(
@@ -17,14 +35,39 @@ pub fn fill_rect(
     height: usize,
     color: u32,
 ) {
-    if x >= screen_w || y >= screen_h { return; }
-    let end_x = (x + width).min(screen_w);
-    let end_y = (y + height).min(screen_h);
-    let row_len = end_x - x;
-    if row_len == 0 { return; }
+    fill_rect_clipped(buf, screen_w, screen_h, x, y, width, height, color, None);
+}
 
-    for cy in y..end_y {
-        let row_start = cy * screen_w + x;
+pub fn fill_rect_clipped(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    color: u32,
+    clip: Option<&ClipRect>,
+) {
+    if x >= screen_w || y >= screen_h || width == 0 || height == 0 { return; }
+
+    let mut start_x = x;
+    let mut start_y = y;
+    let mut end_x = (x + width).min(screen_w);
+    let mut end_y = (y + height).min(screen_h);
+
+    if let Some(c) = clip {
+        start_x = start_x.max(c.min_x);
+        start_y = start_y.max(c.min_y);
+        end_x = end_x.min(c.max_x);
+        end_y = end_y.min(c.max_y);
+    }
+
+    if start_x >= end_x || start_y >= end_y { return; }
+    let row_len = end_x - start_x;
+
+    for cy in start_y..end_y {
+        let row_start = cy * screen_w + start_x;
         for i in 0..row_len {
             buf[row_start + i] = color;
         }
@@ -35,11 +78,25 @@ pub fn draw_line(
     buf: &mut [u32],
     screen_w: usize,
     screen_h: usize,
+    x0: isize,
+    y0: isize,
+    x1: isize,
+    y1: isize,
+    color: u32,
+) {
+    draw_line_clipped(buf, screen_w, screen_h, x0, y0, x1, y1, color, None);
+}
+
+pub fn draw_line_clipped(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
     mut x0: isize,
     mut y0: isize,
     x1: isize,
     y1: isize,
     color: u32,
+    clip: Option<&ClipRect>,
 ) {
     let dx = (x1 - x0).abs();
     let dy = -(y1 - y0).abs();
@@ -49,7 +106,15 @@ pub fn draw_line(
 
     loop {
         if x0 >= 0 && (x0 as usize) < screen_w && y0 >= 0 && (y0 as usize) < screen_h {
-            buf[(y0 as usize) * screen_w + (x0 as usize)] = color;
+            let px = x0 as usize;
+            let py = y0 as usize;
+            let mut draw = true;
+            if let Some(c) = clip {
+                draw = c.contains_pixel(px, py);
+            }
+            if draw {
+                buf[py * screen_w + px] = color;
+            }
         }
         if x0 == x1 && y0 == y1 { break; }
         let e2 = 2 * err;

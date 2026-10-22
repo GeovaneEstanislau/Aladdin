@@ -39,6 +39,7 @@ pub struct AladdinSession {
     pub files: FileManagerApp,
     pub monitor: SystemMonitorApp,
     pub about: AboutApp,
+    pub settings: SettingsApp,
     pub mode: CapabilityMode,
     pub start_menu_open: bool,
     pub should_exit: bool,
@@ -58,6 +59,7 @@ impl AladdinSession {
             files: FileManagerApp::new(),
             monitor: SystemMonitorApp::new(),
             about: AboutApp::new(),
+            settings: SettingsApp::new(),
             mode: CapabilityMode::Balanced,
             start_menu_open: false,
             should_exit: false,
@@ -75,22 +77,29 @@ impl AladdinSession {
     }
 
     fn init_default_windows(&mut self) {
-        // Janela 0: Monitor de Sistema
+        // Janela 0: Monitor de Sistema (aberta)
         self.wm.windows[0] = Some(Window::new(0, "Jinn OS - Monitor de Sistema", 60, 60, 380, 220));
 
-        // Janela 1: Terminal Interativo (Aberto e focado por padrão)
+        // Janela 1: Terminal Interativo (aberta e com foco)
         self.wm.windows[1] = Some(Window::new(1, "Terminal Interativo (Ring 3 Ready)", 470, 80, 460, 240));
 
-        // Janela 2: Sobre o Jinn OS
-        self.wm.windows[2] = Some(Window::new(2, "Sobre o Jinn OS", 240, 330, 420, 200));
+        // Janela 2: Sobre o Jinn OS (fechada)
+        let mut w2 = Window::new(2, "Sobre o Jinn OS", 240, 330, 420, 200);
+        w2.is_open = false;
+        self.wm.windows[2] = Some(w2);
 
-        // Janela 3: Gerenciador de Arquivos Aladdin (FAT32 & Ext2)
+        // Janela 3: Gerenciador de Arquivos Aladdin (fechada)
         let mut w3 = Window::new(3, "Aladdin Files - Volume /disk (FAT32)", 160, 190, 440, 240);
-        w3.is_open = false; // Começa fechada; abre via Dock
+        w3.is_open = false;
         self.wm.windows[3] = Some(w3);
 
-        // Terminal como janela inicial do topo
-        self.wm.order = [0, 2, 3, 1];
+        // Janela 4: Ajustes e Configurações (fechada)
+        let mut w4 = Window::new(4, "Ajustes do Aladdin Desktop", 200, 150, 420, 220);
+        w4.is_open = false;
+        self.wm.windows[4] = Some(w4);
+
+        // Terminal como janela inicial no topo do Z-order
+        self.wm.order = [0, 2, 3, 4, 5, 6, 7, 1];
     }
 
     pub fn erase_cursor(&mut self, buf: &mut [u32], screen_w: usize, screen_h: usize) -> Option<DirtyRect> {
@@ -185,6 +194,7 @@ impl AladdinSession {
                     1 => self.term.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, is_active, stats.current_tick, self.spawn_count),
                     2 => self.about.render(buf, screen_w, screen_h, win.x, win.y),
                     3 => self.files.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, sys.storage_profile_name()),
+                    4 => self.settings.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, self.mode, sys),
                     _ => {}
                 }
             }
@@ -386,6 +396,19 @@ impl AladdinSession {
                         }
                     }
                     4 => {
+                        // Slot 4: Ajustes (Win 4)
+                        if let Some(w) = self.wm.windows[4].as_mut() {
+                            if w.is_open && !w.is_minimized && top_id == 4 {
+                                w.is_minimized = true;
+                            } else {
+                                w.is_open = true;
+                                w.is_minimized = false;
+                                self.wm.bring_to_front(4);
+                            }
+                        }
+                    }
+                    5 => {
+                        // Slot 5: Sobre (Win 2)
                         if let Some(w) = self.wm.windows[2].as_mut() {
                             if w.is_open && !w.is_minimized && top_id == 2 {
                                 w.is_minimized = true;
@@ -447,13 +470,11 @@ impl AladdinSession {
                         // Gerenciador de Arquivos
                         let tab_y = win.y + 48;
                         if my >= tab_y && my <= tab_y + 18 {
-                            // Aba /disk
                             if mx >= win.x + 12 && mx <= win.x + 126 {
                                 self.files.active_volume = 0;
                                 self.files.close_preview();
                                 self.files.refresh_cache(vfs);
                             }
-                            // Aba /ext2
                             if mx >= win.x + 134 && mx <= win.x + 248 {
                                 self.files.active_volume = 1;
                                 self.files.close_preview();
@@ -503,6 +524,33 @@ impl AladdinSession {
                                         }
                                     }
                                 }
+                            }
+                        }
+                    } else if win.id == 4 {
+                        // Ajustes e Configurações
+                        let btn_y = win.y + 72;
+                        if my >= btn_y && my <= btn_y + 22 {
+                            let b0_x = win.x + 12;
+                            let b1_x = b0_x + 108;
+                            let b2_x = b1_x + 108;
+                            // Eco
+                            if mx >= b0_x && mx <= b0_x + 100 { self.mode = CapabilityMode::Basic; }
+                            // Equilibrado
+                            if mx >= b1_x && mx <= b1_x + 100 { self.mode = CapabilityMode::Balanced; }
+                            // Glow Neon
+                            if mx >= b2_x && mx <= b2_x + 100 { self.mode = CapabilityMode::Advanced; }
+                        }
+
+                        // Ações rápidas
+                        let act_y = win.y + 172;
+                        if my >= act_y && my <= act_y + 24 {
+                            // Ciclar JSA
+                            if mx >= win.x + 12 && mx <= win.x + 152 {
+                                sys.cycle_storage_profile();
+                            }
+                            // Reiniciar
+                            if mx >= win.x + 160 && mx <= win.x + 300 {
+                                sys.reboot();
                             }
                         }
                     }
