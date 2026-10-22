@@ -161,15 +161,61 @@ fn test_client_window_lifecycle_and_helpers() {
 
     // Tentativa de outro PID atualizar deve falhar com permissão negada
     let fraud_res = wm.update_client_buffer(999, win_id, &fake_buffer);
-    assert!(fraud_res.is_err());
+    assert_eq!(fraud_res, Err(aladdin::wm::WindowOpError::PermissionDenied));
+
+    // Tentativa de atualizar com dimensões inconsistentes deve falhar
+    let bad_dim = wm.update_client_buffer(101, win_id, &[0x1234; 10]);
+    assert_eq!(bad_dim, Err(aladdin::wm::WindowOpError::InvalidDimensions));
+
+    // Tentativa de atualizar janela inexistente deve retornar NotFound
+    let not_found_up = wm.update_client_buffer(101, 7, &fake_buffer);
+    assert_eq!(not_found_up, Err(aladdin::wm::WindowOpError::NotFound));
 
     // Tentativa de fechar por outro PID deve falhar
     let fraud_close = wm.close_client_window(999, win_id);
-    assert!(fraud_close.is_err());
+    assert_eq!(fraud_close, Err(aladdin::wm::WindowOpError::PermissionDenied));
+
+    // Tentativa de fechar janela inexistente deve falhar
+    let not_found_cl = wm.close_client_window(101, 7);
+    assert_eq!(not_found_cl, Err(aladdin::wm::WindowOpError::NotFound));
 
     // 3. Fechamento seguro pelo proprietário legítimo
     let ok_close = wm.close_client_window(101, win_id);
     assert!(ok_close.is_ok());
     assert!(wm.windows[win_id].is_none());
     assert!(wm.client_buffers[win_id].is_none());
+}
+
+#[test]
+fn test_window_manager_stress_and_scissor_clipping() {
+    let mut wm = WindowManager::new();
+
+    // 1. Abre até a capacidade máxima de janelas (MAX_WINDOWS = 8)
+    let mut opened_ids = [0usize; aladdin::wm::MAX_WINDOWS];
+    for i in 0..aladdin::wm::MAX_WINDOWS {
+        let win_id = wm.create_client_window(i + 1, "App", 50, 50, 100, 100)
+            .expect("Deveria abrir janela até o limite máximo");
+        opened_ids[i] = win_id;
+    }
+
+    // 2. A 9ª janela deve ser rejeitada com erro de capacidade (EMFILE / Err)
+    let overflow_win = wm.create_client_window(99, "Overflow", 50, 50, 100, 100);
+    assert!(overflow_win.is_err());
+
+    // 3. Testa recorte de tesoura (Scissor Clipping)
+    let clip = wm.windows[opened_ids[0]].as_ref().unwrap().client_clip();
+    assert!(clip.min_x > 0);
+    assert!(clip.min_y > 0);
+    assert!(clip.max_x > clip.min_x);
+    assert!(clip.max_y > clip.min_y);
+
+    // 4. Fechamento em massa por PID
+    wm.close_all_for_pid(opened_ids[3] + 1);
+    assert!(wm.windows[opened_ids[3]].is_none());
+    assert!(wm.client_buffers[opened_ids[3]].is_none());
+
+    // 5. Após fechar uma janela, novo slot é liberado
+    let recovered_id = wm.create_client_window(888, "Nova Janela", 50, 50, 200, 150)
+        .expect("Deveria reutilizar slot liberado");
+    assert_eq!(recovered_id, opened_ids[3]);
 }

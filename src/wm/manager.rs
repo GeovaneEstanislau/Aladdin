@@ -7,6 +7,13 @@ use super::window::{Window, TITLE_BAR_HEIGHT};
 
 pub const MAX_WINDOWS: usize = 8;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowOpError {
+    NotFound,
+    PermissionDenied,
+    InvalidDimensions,
+}
+
 pub struct WindowManager {
     pub windows: [Option<Window>; MAX_WINDOWS],
     pub order: [usize; MAX_WINDOWS], // 0 = fundo, MAX-1 = topo
@@ -89,38 +96,35 @@ impl WindowManager {
         owner_pid: usize,
         win_id: usize,
         buffer: &[u32],
-    ) -> Result<(), ()> {
-        if win_id >= MAX_WINDOWS { return Err(()); }
-        if let Some(win) = self.windows[win_id].as_ref() {
-            if win.owner_pid != Some(owner_pid) {
-                return Err(());
-            }
-            let expected_len = win.client_width() * win.client_height();
-            if buffer.len() != expected_len {
-                return Err(());
-            }
-            if let Some(client_buf) = self.client_buffers[win_id].as_mut() {
-                client_buf.copy_from_slice(buffer);
-                return Ok(());
-            }
+    ) -> Result<(), WindowOpError> {
+        if win_id >= MAX_WINDOWS { return Err(WindowOpError::NotFound); }
+        let win = self.windows[win_id].as_ref().ok_or(WindowOpError::NotFound)?;
+        if win.owner_pid != Some(owner_pid) {
+            return Err(WindowOpError::PermissionDenied);
         }
-        Err(())
+        let expected_len = win.client_width() * win.client_height();
+        if buffer.len() != expected_len {
+            return Err(WindowOpError::InvalidDimensions);
+        }
+        if let Some(client_buf) = self.client_buffers[win_id].as_mut() {
+            client_buf.copy_from_slice(buffer);
+            return Ok(());
+        }
+        Err(WindowOpError::NotFound)
     }
 
     pub fn close_client_window(
         &mut self,
         owner_pid: usize,
         win_id: usize,
-    ) -> Result<(), ()> {
-        if win_id >= MAX_WINDOWS { return Err(()); }
-        if let Some(win) = self.windows[win_id].as_ref() {
-            if win.owner_pid != Some(owner_pid) {
-                return Err(());
-            }
-            self.close_window(win_id);
-            return Ok(());
+    ) -> Result<(), WindowOpError> {
+        if win_id >= MAX_WINDOWS { return Err(WindowOpError::NotFound); }
+        let win = self.windows[win_id].as_ref().ok_or(WindowOpError::NotFound)?;
+        if win.owner_pid != Some(owner_pid) {
+            return Err(WindowOpError::PermissionDenied);
         }
-        Err(())
+        self.close_window(win_id);
+        Ok(())
     }
 
     pub fn close_all_for_pid(&mut self, pid: usize) {

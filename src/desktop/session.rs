@@ -100,7 +100,7 @@ impl AladdinSession {
         owner_pid: usize,
         win_id: usize,
         buffer: &[u32],
-    ) -> Result<(), ()> {
+    ) -> Result<(), crate::wm::WindowOpError> {
         let res = self.wm.update_client_buffer(owner_pid, win_id, buffer);
         if res.is_ok() {
             self.client_damaged = true;
@@ -112,7 +112,7 @@ impl AladdinSession {
         &mut self,
         owner_pid: usize,
         win_id: usize,
-    ) -> Result<(), ()> {
+    ) -> Result<(), crate::wm::WindowOpError> {
         let res = self.wm.close_client_window(owner_pid, win_id);
         if res.is_ok() {
             self.client_damaged = true;
