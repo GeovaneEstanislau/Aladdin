@@ -10,13 +10,16 @@ pub const MAX_WINDOWS: usize = 8;
 pub struct WindowManager {
     pub windows: [Option<Window>; MAX_WINDOWS],
     pub order: [usize; MAX_WINDOWS], // 0 = fundo, MAX-1 = topo
+    pub client_buffers: [Option<alloc::vec::Vec<u32>>; MAX_WINDOWS],
 }
 
 impl WindowManager {
     pub const fn new() -> Self {
+        const NONE_BUF: Option<alloc::vec::Vec<u32>> = None;
         Self {
             windows: [None; MAX_WINDOWS],
             order: [0, 1, 2, 3, 4, 5, 6, 7],
+            client_buffers: [NONE_BUF; MAX_WINDOWS],
         }
     }
 
@@ -56,6 +59,7 @@ impl WindowManager {
 
     pub fn close_window(&mut self, idx: usize) -> Option<DirtyRect> {
         if idx < MAX_WINDOWS {
+            self.client_buffers[idx] = None;
             if let Some(win) = self.windows[idx].take() {
                 return Some(win.bounds());
             }
@@ -139,9 +143,9 @@ impl WindowManager {
         // Título da janela e indicador de foco
         if is_active {
             draw_char(buf, screen_w, screen_h, b'*', win.x + 8, win.y + 4, COLOR_CYAN, Some(title_color));
-            draw_string(buf, screen_w, screen_h, win.title, win.x + 20, win.y + 4, COLOR_TEXT_PRI, Some(title_color));
+            draw_string(buf, screen_w, screen_h, win.title_str(), win.x + 20, win.y + 4, COLOR_TEXT_PRI, Some(title_color));
         } else {
-            draw_string(buf, screen_w, screen_h, win.title, win.x + 10, win.y + 4, COLOR_TEXT_MUTED, Some(title_color));
+            draw_string(buf, screen_w, screen_h, win.title_str(), win.x + 10, win.y + 4, COLOR_TEXT_MUTED, Some(title_color));
         }
 
         // Trio de botões semáforo (Traffic-Light / elementary OS)

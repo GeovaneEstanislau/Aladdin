@@ -1,4 +1,5 @@
 extern crate aladdin;
+extern crate alloc;
 
 use aladdin::contracts::framebuffer::DirtyRect;
 use aladdin::compositor::ClipRect;
@@ -107,4 +108,29 @@ fn test_terminal_history_buffer() {
     assert_eq!(term.history_count, 6);
     let last_len = term.history_lens[5];
     assert_eq!(&term.history[5][..last_len], b"Line 7");
+}
+
+#[test]
+fn test_client_window_buffer_and_title() {
+    let mut wm = WindowManager::new();
+    let mut client_win = Window::new(0, "Demo Ring 3 Client", 150, 120, 320, 240);
+    client_win.owner_pid = Some(42);
+
+    assert_eq!(client_win.title_str(), "Demo Ring 3 Client");
+    assert_eq!(client_win.owner_pid, Some(42));
+    assert_eq!(client_win.client_width(), 318);
+    assert_eq!(client_win.client_height(), 240 - 24 - 2);
+
+    let id = wm.open_window(client_win).expect("Deveria abrir janela cliente");
+    assert_eq!(id, 0);
+
+    // Aloca e anexa buffer de cliente
+    let client_pixels = client_win.client_width() * client_win.client_height();
+    wm.client_buffers[id] = Some(alloc::vec![0x00FF_00FF; client_pixels]);
+    assert!(wm.client_buffers[id].is_some());
+    assert_eq!(wm.client_buffers[id].as_ref().unwrap().len(), client_pixels);
+
+    let damage = wm.close_window(id).expect("Deveria fechar janela cliente");
+    assert_eq!(damage.width, 320);
+    assert!(wm.client_buffers[id].is_none());
 }

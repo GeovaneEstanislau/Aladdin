@@ -189,13 +189,37 @@ impl AladdinSession {
 
                 self.wm.render_window_chrome(buf, screen_w, screen_h, &win, is_active, self.mode);
 
-                match win.id {
-                    0 => self.monitor.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, &stats),
-                    1 => self.term.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, is_active, stats.current_tick, self.spawn_count),
-                    2 => self.about.render(buf, screen_w, screen_h, win.x, win.y),
-                    3 => self.files.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, sys.storage_profile_name()),
-                    4 => self.settings.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, self.mode, sys),
-                    _ => {}
+                // Renderiza superfície cliente se for uma janela com buffer próprio (Ring 3 ou externa)
+                if let Some(ref client_buf) = self.wm.client_buffers[win_idx] {
+                    let clip = win.client_clip();
+                    let client_x = win.x + 1;
+                    let client_y = win.y + crate::wm::TITLE_BAR_HEIGHT + 1;
+                    let client_w = win.client_width();
+                    let client_h = win.client_height();
+
+                    for cy in 0..client_h {
+                        let py = client_y + cy;
+                        if py < clip.min_y || py >= clip.max_y || py >= screen_h { continue; }
+                        let row_start = py * screen_w;
+                        let client_row = cy * client_w;
+                        for cx in 0..client_w {
+                            let px = client_x + cx;
+                            if px < clip.min_x || px >= clip.max_x || px >= screen_w { continue; }
+                            let p_idx = client_row + cx;
+                            if p_idx < client_buf.len() {
+                                buf[row_start + px] = client_buf[p_idx];
+                            }
+                        }
+                    }
+                } else {
+                    match win.id {
+                        0 => self.monitor.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, &stats),
+                        1 => self.term.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, is_active, stats.current_tick, self.spawn_count),
+                        2 => self.about.render(buf, screen_w, screen_h, win.x, win.y),
+                        3 => self.files.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, sys.storage_profile_name()),
+                        4 => self.settings.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, self.mode, sys),
+                        _ => {}
+                    }
                 }
             }
         }

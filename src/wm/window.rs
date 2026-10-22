@@ -9,7 +9,8 @@ pub const BTN_SIZE: usize = 16;
 #[derive(Debug, Clone, Copy)]
 pub struct Window {
     pub id: usize,
-    pub title: &'static str,
+    pub title: [u8; 48],
+    pub title_len: usize,
     pub x: usize,
     pub y: usize,
     pub width: usize,
@@ -27,13 +28,24 @@ pub struct Window {
     pub can_minimize: bool,
     pub can_maximize: bool,
     pub can_close: bool,
+    pub owner_pid: Option<usize>,
 }
 
 impl Window {
-    pub const fn new(id: usize, title: &'static str, x: usize, y: usize, width: usize, height: usize) -> Self {
+    pub const fn new(id: usize, title: &str, x: usize, y: usize, width: usize, height: usize) -> Self {
+        let mut title_buf = [0u8; 48];
+        let bytes = title.as_bytes();
+        let len = if bytes.len() > 48 { 48 } else { bytes.len() };
+        let mut i = 0;
+        while i < len {
+            title_buf[i] = bytes[i];
+            i += 1;
+        }
+
         Self {
             id,
-            title,
+            title: title_buf,
+            title_len: len,
             x,
             y,
             width,
@@ -51,7 +63,20 @@ impl Window {
             can_minimize: true,
             can_maximize: true,
             can_close: true,
+            owner_pid: None,
         }
+    }
+
+    pub fn title_str(&self) -> &str {
+        core::str::from_utf8(&self.title[..self.title_len]).unwrap_or("Janela")
+    }
+
+    pub fn client_width(&self) -> usize {
+        self.width.saturating_sub(2)
+    }
+
+    pub fn client_height(&self) -> usize {
+        self.height.saturating_sub(TITLE_BAR_HEIGHT + 2)
     }
 
     pub fn bounds(&self) -> DirtyRect {
