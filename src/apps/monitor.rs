@@ -47,7 +47,10 @@ impl SystemMonitorApp {
             COLOR_BORDER,
         );
 
-        draw_string(buf, screen_w, screen_h, "Paginacao PML4 | Scheduler Preemptivo", win_x + 12, win_y + 164, COLOR_PURPLE, Some(COLOR_CARD));
-        draw_string(buf, screen_w, screen_h, "Seguranca: Ring 0 (Kernel) / Ring 3 (User)", win_x + 12, win_y + 184, COLOR_TEXT_MUTED, Some(COLOR_CARD));
+        draw_string(buf, screen_w, screen_h, "--- Rede e Seguranca (JinnWall) ---", win_x + 12, win_y + 164, COLOR_CYAN, Some(COLOR_CARD));
+        draw_string(buf, screen_w, screen_h, "Rede     : VirtIO-Net (PCI) | IP: 10.0.2.15", win_x + 12, win_y + 184, COLOR_EMERALD, Some(COLOR_CARD));
+        draw_string(buf, screen_w, screen_h, "Firewall : JinnWall SPI Ativo (DROP Unsolicited)", win_x + 12, win_y + 204, COLOR_CYAN, Some(COLOR_CARD));
+        draw_string(buf, screen_w, screen_h, "Recursos : Limites de Frames, FDs e Sockets Ativos", win_x + 12, win_y + 224, COLOR_PURPLE, Some(COLOR_CARD));
+        draw_string(buf, screen_w, screen_h, "Seguranca: Ring 0 (Kernel) / Ring 3 (User ELF64)", win_x + 12, win_y + 244, COLOR_TEXT_MUTED, Some(COLOR_CARD));
     }
 }
