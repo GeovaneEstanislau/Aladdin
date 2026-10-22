@@ -219,3 +219,46 @@ fn test_window_manager_stress_and_scissor_clipping() {
         .expect("Deveria reutilizar slot liberado");
     assert_eq!(recovered_id, opened_ids[3]);
 }
+
+#[test]
+fn test_performance_and_memory_invariants() {
+    // 1. Verificação de Footprint em Memória
+    let win_size = core::mem::size_of::<Window>();
+    // Estrutura Window deve ser compacta (<= 192 bytes, tamanho real 168 bytes)
+    assert!(win_size <= 192, "Tamanho de Window excedeu limite: {} bytes", win_size);
+
+    let rect_size = core::mem::size_of::<DirtyRect>();
+    // DirtyRect: 4 x usize (32 bytes em x86_64)
+    assert!(rect_size <= 32, "Tamanho de DirtyRect excedeu limite: {} bytes", rect_size);
+
+    let clip_size = core::mem::size_of::<ClipRect>();
+    assert!(clip_size <= 32, "Tamanho de ClipRect excedeu limite: {} bytes", clip_size);
+
+    // 2. Throughput de Criação e Destruição de Janelas
+    let mut wm = WindowManager::new();
+    let start = std::time::Instant::now();
+    let iterations = 1000;
+    for _ in 0..iterations {
+        let win_id = wm.create_client_window(42, "Bench App", 10, 10, 100, 100)
+            .expect("Deveria criar janela no bench");
+        let _ = wm.close_client_window(42, win_id).expect("Deveria fechar janela");
+    }
+    let elapsed = start.elapsed();
+    let per_op_micros = elapsed.as_micros() as f64 / iterations as f64;
+    println!("Throughput de ciclo de vida de janela: {:.2} µs por criacao+fechamento", per_op_micros);
+    // Deve levar menos de 100 µs por ciclo de alocação/desalocação no host em modo debug (< 10 µs em release)
+    assert!(per_op_micros < 100.0, "Ciclo de vida de janela muito lento: {:.2} µs", per_op_micros);
+
+    // 3. Throughput de Operações Geométricas de Dirty Rects
+    let rect_start = std::time::Instant::now();
+    let mut current_rect = DirtyRect::new(0, 0, 10, 10);
+    for i in 0..10_000 {
+        let next = DirtyRect::new(i % 1024, (i * 2) % 768, 50, 50);
+        current_rect = current_rect.union(&next);
+    }
+    let rect_elapsed = rect_start.elapsed();
+    let per_rect_nanos = rect_elapsed.as_nanos() as f64 / 10_000.0;
+    println!("Throughput de union de DirtyRect: {:.2} ns por uniao", per_rect_nanos);
+    assert!(per_rect_nanos < 100.0, "Operacao de DirtyRect muito lenta: {:.2} ns", per_rect_nanos);
+}
+
