@@ -262,3 +262,86 @@ fn test_performance_and_memory_invariants() {
     assert!(per_rect_nanos < 100.0, "Operacao de DirtyRect muito lenta: {:.2} ns", per_rect_nanos);
 }
 
+#[test]
+fn test_client_window_protocol_contract_validation() {
+    let mut wm = WindowManager::new();
+
+    // 1. Validar criação de múltiplas janelas para o mesmo PID
+    let pid = 200;
+    let w1 = wm.create_client_window(pid, "App 1", 20, 20, 200, 150).expect("W1 ok");
+    let w2 = wm.create_client_window(pid, "App 2", 40, 40, 200, 150).expect("W2 ok");
+    assert_ne!(w1, w2);
+
+    // 2. Validação estrita de integridade dimensional
+    // Buffer menor que o esperado (esperado: 200 * 150 = 30000 pixels)
+    let small_buf = alloc::vec![0u32; 1000];
+    let err_small = wm.update_client_buffer(pid, w1, &small_buf);
+    assert_eq!(err_small, Err(aladdin::wm::WindowOpError::InvalidDimensions));
+
+    // Buffer maior que o esperado
+    let large_buf = alloc::vec![0u32; 50000];
+    let err_large = wm.update_client_buffer(pid, w1, &large_buf);
+    assert_eq!(err_large, Err(aladdin::wm::WindowOpError::InvalidDimensions));
+
+    // Buffer com dimensão exata
+    let exact_buf = alloc::vec![0x00FF_AABB; 200 * 150];
+    let ok_up = wm.update_client_buffer(pid, w1, &exact_buf);
+    assert!(ok_up.is_ok());
+
+    // 3. Validação de segurança cross-PID (isolamento inter-processos)
+    let foreign_pid = 201;
+    let cross_up = wm.update_client_buffer(foreign_pid, w1, &exact_buf);
+    assert_eq!(cross_up, Err(aladdin::wm::WindowOpError::PermissionDenied));
+
+    let cross_close = wm.close_client_window(foreign_pid, w1);
+    assert_eq!(cross_close, Err(aladdin::wm::WindowOpError::PermissionDenied));
+
+    // Janelas ainda devem estar abertas
+    assert!(wm.windows[w1].is_some());
+    assert!(wm.windows[w2].is_some());
+
+    // 4. Limpeza automática de todas as janelas por encerramento de processo (zombie cleanup)
+    wm.close_all_for_pid(pid);
+    assert!(wm.windows[w1].is_none());
+    assert!(wm.windows[w2].is_none());
+    assert!(wm.client_buffers[w1].is_none());
+    assert!(wm.client_buffers[w2].is_none());
+
+    // 5. Verificação de reuso de slot após limpeza
+    let new_pid = 300;
+    let w_new = wm.create_client_window(new_pid, "Novo App", 10, 10, 100, 100).expect("Reuso ok");
+    assert!(w_new < aladdin::wm::MAX_WINDOWS);
+    assert_eq!(wm.windows[w_new].as_ref().unwrap().owner_pid, Some(new_pid));
+}
+
+#[test]
+fn test_session_client_damage_and_zombie_cleanup() {
+    let mut session = aladdin::desktop::session::AladdinSession::new();
+    assert!(!session.client_damaged);
+
+    // 1. Criar janela cliente através da sessão deve marcar client_damaged
+    let pid = 500;
+    let win_id = session.create_client_window(pid, "Sessao App", 120, 80).expect("Janela criada");
+    assert!(session.client_damaged);
+    session.client_damaged = false;
+
+    // 2. Atualizar buffer da janela cliente deve marcar client_damaged
+    let buf = alloc::vec![0x0011_2233; 120 * 80];
+    let up_res = session.update_client_buffer(pid, win_id, &buf);
+    assert!(up_res.is_ok());
+    assert!(session.client_damaged);
+    session.client_damaged = false;
+
+    // 3. Atualização rejeitada por PID intruso não deve marcar client_damaged
+    let intruso_pid = 666;
+    let intruso_res = session.update_client_buffer(intruso_pid, win_id, &buf);
+    assert_eq!(intruso_res, Err(aladdin::wm::WindowOpError::PermissionDenied));
+    assert!(!session.client_damaged);
+
+    // 4. Fechar janelas do PID deve limpar recursos e marcar client_damaged
+    session.close_windows_for_pid(pid);
+    assert!(session.client_damaged);
+    assert!(session.wm.windows[win_id].is_none());
+}
+
+
