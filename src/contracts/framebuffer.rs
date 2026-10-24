@@ -33,6 +33,30 @@ impl DirtyRect {
         self.y + self.height > other.y
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.width == 0 || self.height == 0
+    }
+
+    pub fn intersect(&self, other: &DirtyRect) -> Option<DirtyRect> {
+        if !self.intersects(other) {
+            return None;
+        }
+        let x0 = self.x.max(other.x);
+        let y0 = self.y.max(other.y);
+        let x1 = (self.x + self.width).min(other.x + other.width);
+        let y1 = (self.y + self.height).min(other.y + other.height);
+        if x1 > x0 && y1 > y0 {
+            Some(DirtyRect {
+                x: x0,
+                y: y0,
+                width: x1 - x0,
+                height: y1 - y0,
+            })
+        } else {
+            None
+        }
+    }
+
     pub fn clamp(&self, max_w: usize, max_h: usize) -> DirtyRect {
         let x = self.x.min(max_w);
         let y = self.y.min(max_h);

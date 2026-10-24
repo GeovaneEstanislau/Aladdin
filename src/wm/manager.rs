@@ -83,10 +83,16 @@ impl WindowManager {
         client_w: usize,
         client_h: usize,
     ) -> Result<usize, ()> {
+        if client_w == 0 || client_h == 0 {
+            return Err(());
+        }
+        let client_pixels = client_w.checked_mul(client_h).ok_or(())?;
+        if client_pixels > 1024 * 768 {
+            return Err(());
+        }
         let mut win = Window::new_with_client_size(0, title, x, y, client_w, client_h);
         win.owner_pid = Some(owner_pid);
         let id = self.open_window(win)?;
-        let client_pixels = client_w * client_h;
         self.client_buffers[id] = Some(alloc::vec![0x000F_172A; client_pixels]);
         Ok(id)
     }

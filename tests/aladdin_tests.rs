@@ -344,4 +344,111 @@ fn test_session_client_damage_and_zombie_cleanup() {
     assert!(session.wm.windows[win_id].is_none());
 }
 
+#[test]
+fn test_dirty_rect_edge_cases_and_clamping() {
+    // 1. is_empty
+    assert!(DirtyRect::new(10, 10, 0, 50).is_empty());
+    assert!(DirtyRect::new(10, 10, 50, 0).is_empty());
+    assert!(DirtyRect::new(10, 10, 0, 0).is_empty());
+    assert!(!DirtyRect::new(10, 10, 50, 50).is_empty());
+
+    // 2. clamp parcialmente fora
+    let r_partial = DirtyRect::new(800, 600, 300, 200);
+    let clamped = r_partial.clamp(1024, 768);
+    assert_eq!(clamped.x, 800);
+    assert_eq!(clamped.y, 600);
+    assert_eq!(clamped.width, 224); // 1024 - 800
+    assert_eq!(clamped.height, 168); // 768 - 600
+
+    // 3. clamp completamente fora
+    let r_outside = DirtyRect::new(1200, 800, 100, 100);
+    let clamped_out = r_outside.clamp(1024, 768);
+    assert_eq!(clamped_out.x, 1024);
+    assert_eq!(clamped_out.y, 768);
+    assert_eq!(clamped_out.width, 0);
+    assert_eq!(clamped_out.height, 0);
+    assert!(clamped_out.is_empty());
+
+    // 4. intersect: sobreposição, disjunção e tangência
+    let r1 = DirtyRect::new(10, 10, 50, 50);
+    let r2 = DirtyRect::new(30, 30, 50, 50);
+    let inter = r1.intersect(&r2).expect("Deveria haver interseção");
+    assert_eq!(inter.x, 30);
+    assert_eq!(inter.y, 30);
+    assert_eq!(inter.width, 30);
+    assert_eq!(inter.height, 30);
+
+    let r_disjoint = DirtyRect::new(100, 100, 20, 20);
+    assert!(r1.intersect(&r_disjoint).is_none());
+
+    // Tangente na borda direita (x=60 não sobrepõe x=10..60)
+    let r_tangent = DirtyRect::new(60, 10, 20, 50);
+    assert!(r1.intersect(&r_tangent).is_none());
+}
+
+#[test]
+fn test_client_window_dimensional_overflow_and_zero_rejection() {
+    let mut wm = WindowManager::new();
+
+    // 1. Rejeição de dimensões zero
+    assert!(wm.create_client_window(1, "Zero Width", 10, 10, 0, 100).is_err());
+    assert!(wm.create_client_window(1, "Zero Height", 10, 10, 100, 0).is_err());
+    assert!(wm.create_client_window(1, "Zero Both", 10, 10, 0, 0).is_err());
+
+    // 2. Rejeição de overflow de multiplicação de dimensões
+    assert!(wm.create_client_window(1, "Overflow W", 10, 10, usize::MAX / 2, 4).is_err());
+    assert!(wm.create_client_window(1, "Overflow H", 10, 10, 4, usize::MAX / 2).is_err());
+
+    // 3. Rejeição de limite máximo de área (> 1024 * 768 = 786432)
+    assert!(wm.create_client_window(1, "Too Big", 10, 10, 2000, 2000).is_err());
+    assert!(wm.create_client_window(1, "Just Over", 10, 10, 1025, 768).is_err());
+
+    // 4. Criação no limite suportado (1024 * 768) deve ser aceita
+    let max_ok = wm.create_client_window(1, "Max Screen", 0, 0, 1024, 768);
+    assert!(max_ok.is_ok());
+    let win_id = max_ok.unwrap();
+    assert_eq!(wm.client_buffers[win_id].as_ref().unwrap().len(), 1024 * 768);
+
+    // 5. Teste de saturating arithmetic em Window::new_with_client_size
+    let extreme_win = Window::new_with_client_size(0, "Extreme", 0, 0, usize::MAX, usize::MAX);
+    assert_eq!(extreme_win.width, usize::MAX); // saturating_add evitou overflow panic
+    assert_eq!(extreme_win.height, usize::MAX);
+}
+
+#[test]
+fn test_window_manager_z_order_composition() {
+    let mut wm = WindowManager::new();
+
+    // Cria 3 janelas sobrepostas
+    let w0 = wm.create_client_window(10, "Janela Fundo", 0, 0, 100, 100).expect("W0 ok");
+    let w1 = wm.create_client_window(10, "Janela Meio", 20, 20, 100, 100).expect("W1 ok");
+    let w2 = wm.create_client_window(10, "Janela Topo", 40, 40, 100, 100).expect("W2 ok");
+
+    assert_eq!(wm.top_window_id(), w2);
+
+    // Ponto (45, 45) está nas três janelas -> topo deve ser w2
+    assert_eq!(wm.find_window_at(45, 45), Some(w2));
+
+    // Ponto (25, 25) está em w0 e w1 -> topo deve ser w1
+    assert_eq!(wm.find_window_at(25, 25), Some(w1));
+
+    // Traz w0 para a frente
+    wm.bring_to_front(w0);
+    assert_eq!(wm.top_window_id(), w0);
+    assert_eq!(wm.find_window_at(25, 25), Some(w0));
+
+    // Fecha a janela w1 (do meio)
+    let _ = wm.close_client_window(10, w1);
+    assert!(wm.windows[w1].is_none());
+
+    // w0 continua no topo
+    assert_eq!(wm.top_window_id(), w0);
+    assert_eq!(wm.find_window_at(25, 25), Some(w0));
+
+    // Ponto (45, 45) que estava em w2 e w0: w0 cobre (0..102, 0..126)
+    assert_eq!(wm.find_window_at(45, 45), Some(w0));
+
+    // Ponto (110, 110) está fora de w0 mas dentro de w2 (x=40..142, y=40..166)
+    assert_eq!(wm.find_window_at(110, 110), Some(w2));
+}
 

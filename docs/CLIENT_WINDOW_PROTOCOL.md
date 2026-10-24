@@ -1,10 +1,10 @@
 # ESPECIFICAÇÃO NORMATIVA — PROTOCOLO DE JANELAS DE CLIENTE ALADDIN
 ## Contrato de Integração Gráfica para Aplicações em Ring 3 (Jinn OS & Aladdin Desktop)
 
-**Versão da Norma:** 1.0.0  
-**Status:** Oficial / Estável  
-**Projetos Afetados:** `aladdin` (Compositor/WM) e `jinn` (Microkernel ABI)  
-**Associação:** Issue Jinn [#47](https://github.com/GeovaneEstanislau/Jinn_Project/issues/47) / Aladdin [#3](https://github.com/GeovaneEstanislau/Aladdin/issues/3)  
+**Versão da Norma:** 1.0.0<br/>
+**Status:** Oficial / Estável<br/>
+**Projetos Afetados:** `aladdin` (Compositor/WM) e `jinn` (Microkernel ABI)<br/>
+**Associação:** Issue Jinn [#47](https://github.com/GeovaneEstanislau/Jinn_Project/issues/47) / Aladdin [#3](https://github.com/GeovaneEstanislau/Aladdin/issues/3)
 
 ---
 
@@ -120,3 +120,48 @@ Para assegurar imunidade contra vazamento de recursos e janelas zumbis na área 
 | `WindowOpError::InvalidDimensions`| `EINVAL` | `-22` | Dimensão zero, superior à tela ou buffer com tamanho inconsistente. |
 | *(Falha de Alocação de Janela)* | `EMFILE` | `-24` | Cota máxima de janelas por tarefa ou capacidade global esgotada. |
 | *(Sub-sistema Indisponível)* | `ENOSYS` | `-38` | Compositor gráfico não inicializado ou operando em modo texto. |
+
+---
+
+## 6. Geometria, Aritmética Segura e Dirty Rects
+
+### 6.1. Proteção Aritmética e Rejeição de Overflows
+Para prevenir ataques de corrupção de memória ou negação de serviço via wrapping aritmético de inteiros:
+- **Dimensões Úteis:** `client_w > 0 && client_h > 0`. Janelas com largura ou altura zero são estritamente rejeitadas.
+- **Aritmética Saturante:** No cálculo das dimensões totais incluindo a moldura da janela (`TITLE_BAR_HEIGHT = 24` e bordas laterais), utiliza-se `saturating_add`:
+  ```rust
+  let total_w = client_w.saturating_add(2);
+  let total_h = client_h.saturating_add(TITLE_BAR_HEIGHT + 2);
+  ```
+- **Verificação de Buffer:** O total de pixels é computado via `client_w.checked_mul(client_h)`. Se ocorrer overflow de multiplicação ou se o produto exceder o teto do framebuffer (`1024 * 768 = 786.432` pixels), a criação é sumariamente rejeitada.
+
+### 6.2. Primitivas de Regiões Modificadas (`DirtyRect`)
+O compositor minimiza a taxa de transferência para a VRAM através de rastreamento de danos:
+- `is_empty(&self) -> bool`: Identifica retângulos degenerados (`width == 0 || height == 0`).
+- `clamp(&self, max_w, max_h) -> DirtyRect`: Trunca o retângulo nas bordas físicas da tela sem overflow.
+- `intersect(&self, other) -> Option<DirtyRect>`: Calcula a sobreposição exata de duas regiões retangulares.
+- `union(&self, other) -> DirtyRect`: Calcula o retângulo envolvente mínimo que engloba ambas as regiões.
+
+---
+
+## 7. Política de Z-Order e Algoritmo de Composição
+
+- **Estrutura de Camadas:** O array estático `order: [usize; MAX_WINDOWS]` define a pilha de visibilidade: índice `0` representa a janela mais ao fundo e `MAX_WINDOWS - 1` representa a janela em foco ativo no topo.
+- **Trazendo para Frente (`bring_to_front`):** Ao receber foco ou clique do mouse, a janela tem seu índice transladado para a última posição (`MAX_WINDOWS - 1`), deslocando as demais sem alterar a ordem relativa das janelas intermediárias.
+- **Seleção por Ponto (`find_window_at`):** A busca por clique é feita iterando `order` de cima para baixo (`.iter().rev()`), garantindo que a janela visível no topo capture eventos de entrada em regiões sobrepostas.
+- **Fechamento e Remanejamento:** O fechamento de qualquer janela (seja pelo meio ou pelo topo) limpa o slot associado e invalida a área retangular ocupada, preservando a consistência dos identificadores e da ordem de renderização das janelas restantes.
+
+---
+
+## 8. Matriz de Testes e Evidências Técnicas
+
+Todas as garantias deste protocolo são validadas de forma automatizada por testes unitários e de integração:
+
+| Teste | Módulo | Propósito e Invariante Comprovada |
+| :--- | :--- | :--- |
+| `test_dirty_rect_edge_cases_and_clamping` | `aladdin_tests.rs` | Verifica `is_empty`, truncamento via `clamp` e interseções/tangências de dirty rects. |
+| `test_client_window_dimensional_overflow_and_zero_rejection` | `aladdin_tests.rs` | Valida rejeição de dimensões zero, proteção contra overflow com `checked_mul` e aritmética saturante. |
+| `test_window_manager_z_order_composition` | `aladdin_tests.rs` | Comprova sobreposição correta, `find_window_at` reverso, elevação ao topo e fechamento intermediário. |
+| `test_client_window_protocol_contract_validation` | `aladdin_tests.rs` | Valida isolamento inter-processos (cross-PID update/close rejeitado) e integridade dimensional do buffer. |
+| `test_session_client_damage_and_zombie_cleanup` | `aladdin_tests.rs` | Verifica marcação de `client_damaged` e desalocação total de janelas de um PID. |
+| `test_qemu.ps1` (`apps/ola-mundo`) | Jinn Kernel + QEMU | Execução em Ring 3 real via `int 0x80`, exibindo buffer de cliente e fechamento limpo via Syscall 22. |
