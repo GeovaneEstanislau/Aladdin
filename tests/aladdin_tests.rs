@@ -1,4 +1,4 @@
-extern crate aladdin;
+﻿extern crate aladdin;
 extern crate alloc;
 
 use aladdin::contracts::framebuffer::DirtyRect;
@@ -452,3 +452,298 @@ fn test_window_manager_z_order_composition() {
     assert_eq!(wm.find_window_at(110, 110), Some(w2));
 }
 
+
+struct MockSystem {
+    profile: std::sync::atomic::AtomicU8,
+    storage: &'static str,
+}
+
+impl MockSystem {
+    fn new() -> Self {
+        Self {
+            profile: std::sync::atomic::AtomicU8::new(0), // 0 = PublicSecure, 1 = Development
+            storage: "Aladdin JSA",
+        }
+    }
+}
+
+impl aladdin::contracts::system::SystemHost for MockSystem {
+    fn stats(&self) -> aladdin::contracts::system::SystemStats {
+        let prof = if self.profile.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+            aladdin::contracts::system::JinnWallProfile::PublicSecure
+        } else {
+            aladdin::contracts::system::JinnWallProfile::Development
+        };
+        aladdin::contracts::system::SystemStats {
+            uptime_secs: 42,
+            task_count: 5,
+            sched_ticks: 4200,
+            used_ram_mb: 64,
+            total_ram_mb: 512,
+            current_tick: 4200,
+            net_ip: [10, 0, 2, 15],
+            jinnwall_active_conns: 3,
+            jinnwall_drops: 12,
+            jinnwall_inspected: 150,
+            jinnwall_accepted: 138,
+            jinnwall_profile: prof,
+        }
+    }
+
+    fn yield_cpu(&self) {}
+
+    fn storage_profile_name(&self) -> &'static str {
+        self.storage
+    }
+
+    fn cycle_storage_profile(&self) {}
+
+    fn jinnwall_profile(&self) -> aladdin::contracts::system::JinnWallProfile {
+        if self.profile.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+            aladdin::contracts::system::JinnWallProfile::PublicSecure
+        } else {
+            aladdin::contracts::system::JinnWallProfile::Development
+        }
+    }
+
+    fn set_jinnwall_profile(&self, profile: aladdin::contracts::system::JinnWallProfile) {
+        let val = match profile {
+            aladdin::contracts::system::JinnWallProfile::PublicSecure => 0,
+            aladdin::contracts::system::JinnWallProfile::Development => 1,
+        };
+        self.profile.store(val, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn toggle_jinnwall_profile(&self) -> aladdin::contracts::system::JinnWallProfile {
+        let cur = self.profile.load(std::sync::atomic::Ordering::SeqCst);
+        let next = if cur == 0 { 1 } else { 0 };
+        self.profile.store(next, std::sync::atomic::Ordering::SeqCst);
+        if next == 0 {
+            aladdin::contracts::system::JinnWallProfile::PublicSecure
+        } else {
+            aladdin::contracts::system::JinnWallProfile::Development
+        }
+    }
+
+    fn reboot(&self) -> ! {
+        panic!("Reboot called in test");
+    }
+}
+
+#[test]
+fn test_jinnwall_firewall_profile_and_telemetry() {
+    use aladdin::contracts::system::{JinnWallProfile, SystemHost};
+
+    let sys = MockSystem::new();
+    assert_eq!(sys.jinnwall_profile(), JinnWallProfile::PublicSecure);
+    assert_eq!(sys.jinnwall_profile().name(), "PublicSecure");
+
+    // Alterna perfil
+    let p1 = sys.toggle_jinnwall_profile();
+    assert_eq!(p1, JinnWallProfile::Development);
+    assert_eq!(sys.jinnwall_profile(), JinnWallProfile::Development);
+    assert_eq!(sys.jinnwall_profile().name(), "Development");
+
+    // Alterna novamente
+    let p2 = sys.toggle_jinnwall_profile();
+    assert_eq!(p2, JinnWallProfile::PublicSecure);
+
+    // Set explicito
+    sys.set_jinnwall_profile(JinnWallProfile::Development);
+    assert_eq!(sys.jinnwall_profile(), JinnWallProfile::Development);
+
+    // Valida consistencia de SystemStats
+    let stats = sys.stats();
+    assert_eq!(stats.jinnwall_profile, JinnWallProfile::Development);
+    assert_eq!(stats.jinnwall_drops, 12);
+    assert_eq!(stats.jinnwall_active_conns, 3);
+    assert_eq!(stats.jinnwall_inspected, 150);
+    assert_eq!(stats.jinnwall_accepted, 138);
+}
+
+#[test]
+fn test_settings_app_jinnwall_rendering_and_click_toggle() {
+    use aladdin::contracts::system::{CapabilityMode, JinnWallProfile, SystemHost};
+    use aladdin::desktop::session::AladdinSession;
+
+    let sys = MockSystem::new();
+    let mut session = AladdinSession::new();
+
+    // Janela 4 deve estar fechada inicialmente
+    assert!(session.wm.windows[4].is_some());
+    assert!(!session.wm.windows[4].as_ref().unwrap().is_open);
+
+    // Abre janela 4
+    if let Some(w) = session.wm.windows[4].as_mut() {
+        w.is_open = true;
+    }
+    session.wm.bring_to_front(4);
+
+    // Renderiza Ajustes para buffer
+    let mut buf = alloc::vec![0u32; 1024 * 768];
+    session.settings.render(
+        &mut buf,
+        1024,
+        768,
+        session.wm.windows[4].as_ref().unwrap().x,
+        session.wm.windows[4].as_ref().unwrap().y,
+        session.wm.windows[4].as_ref().unwrap().width,
+        session.wm.windows[4].as_ref().unwrap().height,
+        CapabilityMode::Balanced,
+        &sys,
+    );
+
+    // Simula clique exatamente no botao 'Alternar Perfil Firewall'
+    let win = session.wm.windows[4].as_ref().unwrap();
+    let btn_x = win.x + 30;
+    let btn_y = win.y + 166 + 40 + 5;
+
+    assert_eq!(sys.jinnwall_profile(), JinnWallProfile::PublicSecure);
+
+    struct DummyProc;
+    impl aladdin::contracts::process::ProcessHost for DummyProc {
+        fn spawn_app(&mut self, _path: &str) -> Result<usize, ()> { Ok(1) }
+        fn execute_command(&mut self, _cmd: &str, _cb: &mut dyn FnMut(&str, u32)) {}
+    }
+
+    struct DummyVfs;
+    impl aladdin::contracts::vfs::VfsHost for DummyVfs {
+        fn readdir(&self, _path: &str, _cb: &mut dyn FnMut(&str, bool, bool, bool)) {}
+        fn read_file(&self, _path: &str, _dest: &mut [u8]) -> Result<usize, ()> { Ok(0) }
+        fn write_file(&self, _path: &str, _data: &[u8]) -> Result<(), ()> { Ok(()) }
+        fn remove_file(&self, _path: &str) -> Result<(), ()> { Ok(()) }
+    }
+
+    let mut proc = DummyProc;
+    let vfs = DummyVfs;
+
+    let _ = session.handle_mouse(btn_x, btn_y, 1, &sys, &vfs, &mut proc, 1024, 768);
+    // Apos clique, o perfil deve ter mudado para Development!
+    assert_eq!(sys.jinnwall_profile(), JinnWallProfile::Development);
+}
+
+#[test]
+fn test_telemetry_consistency_and_zero_values() {
+    use aladdin::contracts::system::{CapabilityMode, JinnWallProfile, SystemHost, SystemStats};
+    use aladdin::apps::monitor::SystemMonitorApp;
+    use aladdin::desktop::session::AladdinSession;
+
+    struct ZeroSystem;
+    impl SystemHost for ZeroSystem {
+        fn stats(&self) -> SystemStats {
+            SystemStats {
+                uptime_secs: 0,
+                task_count: 0,
+                sched_ticks: 0,
+                used_ram_mb: 0,
+                total_ram_mb: 512,
+                current_tick: 0,
+                net_ip: [0, 0, 0, 0],
+                jinnwall_active_conns: 0,
+                jinnwall_drops: 0,
+                jinnwall_inspected: 0,
+                jinnwall_accepted: 0,
+                jinnwall_profile: JinnWallProfile::PublicSecure,
+            }
+        }
+        fn yield_cpu(&self) {}
+        fn storage_profile_name(&self) -> &'static str { "Nenhum" }
+        fn cycle_storage_profile(&self) {}
+        fn jinnwall_profile(&self) -> JinnWallProfile { JinnWallProfile::PublicSecure }
+        fn set_jinnwall_profile(&self, _p: JinnWallProfile) {}
+        fn toggle_jinnwall_profile(&self) -> JinnWallProfile { JinnWallProfile::PublicSecure }
+        fn reboot(&self) -> ! { panic!() }
+    }
+
+    let sys = ZeroSystem;
+    let mut buf = alloc::vec![0u32; 1024 * 768];
+
+    // Testa render do Monitor com valores zero (incluindo barra de progresso)
+    SystemMonitorApp.render(&mut buf, 1024, 768, 60, 60, 380, 270, &sys.stats());
+
+    // Testa render dos Ajustes com valores zero
+    let session = AladdinSession::new();
+    session.settings.render(&mut buf, 1024, 768, 200, 150, 440, 276, CapabilityMode::Basic, &sys);
+
+    let stats = sys.stats();
+    assert_eq!(stats.jinnwall_drops, 0);
+    assert_eq!(stats.jinnwall_active_conns, 0);
+    assert_eq!(stats.jinnwall_profile, JinnWallProfile::PublicSecure);
+}
+
+#[test]
+fn test_settings_and_monitor_profile_toggle_synchronization() {
+    use aladdin::contracts::system::{CapabilityMode, JinnWallProfile, SystemHost};
+    use aladdin::apps::monitor::SystemMonitorApp;
+    use aladdin::desktop::session::AladdinSession;
+
+    let sys = MockSystem::new();
+    let session = AladdinSession::new();
+    let mut buf = alloc::vec![0u32; 1024 * 768];
+
+    // 1. Estado inicial: PublicSecure
+    assert_eq!(sys.jinnwall_profile(), JinnWallProfile::PublicSecure);
+    assert_eq!(sys.stats().jinnwall_profile, JinnWallProfile::PublicSecure);
+
+    SystemMonitorApp.render(&mut buf, 1024, 768, 60, 60, 380, 270, &sys.stats());
+    session.settings.render(&mut buf, 1024, 768, 200, 150, 440, 276, CapabilityMode::Balanced, &sys);
+
+    // 2. Alterna para Development
+    let new_prof = sys.toggle_jinnwall_profile();
+    assert_eq!(new_prof, JinnWallProfile::Development);
+    assert_eq!(sys.jinnwall_profile(), JinnWallProfile::Development);
+    assert_eq!(sys.stats().jinnwall_profile, JinnWallProfile::Development);
+
+    // Renderiza novamente ambos e verifica coerencia
+    SystemMonitorApp.render(&mut buf, 1024, 768, 60, 60, 380, 270, &sys.stats());
+    session.settings.render(&mut buf, 1024, 768, 200, 150, 440, 276, CapabilityMode::Balanced, &sys);
+
+    // 3. Alterna de volta para PublicSecure
+    let back_prof = sys.toggle_jinnwall_profile();
+    assert_eq!(back_prof, JinnWallProfile::PublicSecure);
+    assert_eq!(sys.jinnwall_profile(), JinnWallProfile::PublicSecure);
+    assert_eq!(sys.stats().jinnwall_profile, JinnWallProfile::PublicSecure);
+}
+
+#[test]
+fn test_system_stats_saturation_and_boundary_safety() {
+    use aladdin::contracts::system::{CapabilityMode, JinnWallProfile, SystemHost, SystemStats};
+    use aladdin::apps::monitor::SystemMonitorApp;
+    use aladdin::desktop::session::AladdinSession;
+
+    struct ExtremeSystem;
+    impl SystemHost for ExtremeSystem {
+        fn stats(&self) -> SystemStats {
+            SystemStats {
+                uptime_secs: usize::MAX,
+                task_count: usize::MAX,
+                sched_ticks: u64::MAX,
+                used_ram_mb: usize::MAX,
+                total_ram_mb: usize::MAX,
+                current_tick: u64::MAX,
+                net_ip: [255, 255, 255, 255],
+                jinnwall_active_conns: usize::MAX,
+                jinnwall_drops: u64::MAX,
+                jinnwall_inspected: u64::MAX,
+                jinnwall_accepted: u64::MAX,
+                jinnwall_profile: JinnWallProfile::Development,
+            }
+        }
+        fn yield_cpu(&self) {}
+        fn storage_profile_name(&self) -> &'static str { "NVMe-Extreme" }
+        fn cycle_storage_profile(&self) {}
+        fn jinnwall_profile(&self) -> JinnWallProfile { JinnWallProfile::Development }
+        fn set_jinnwall_profile(&self, _p: JinnWallProfile) {}
+        fn toggle_jinnwall_profile(&self) -> JinnWallProfile { JinnWallProfile::Development }
+        fn reboot(&self) -> ! { panic!() }
+    }
+
+    let sys = ExtremeSystem;
+    let mut buf = alloc::vec![0u32; 1024 * 768];
+
+    // Verifica que valores saturados nao causam panico ou overflow em tempo de renderizacao
+    SystemMonitorApp.render(&mut buf, 1024, 768, 60, 60, 380, 270, &sys.stats());
+
+    let session = AladdinSession::new();
+    session.settings.render(&mut buf, 1024, 768, 200, 150, 440, 276, CapabilityMode::Advanced, &sys);
+}

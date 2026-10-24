@@ -1,4 +1,19 @@
-//! Contrato de Telemetria e Serviços de Sistema
+﻿//! Contrato de Telemetria e Servicos de Sistema
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JinnWallProfile {
+    PublicSecure,
+    Development,
+}
+
+impl JinnWallProfile {
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::PublicSecure => "PublicSecure",
+            Self::Development => "Development",
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct SystemStats {
@@ -11,15 +26,18 @@ pub struct SystemStats {
     pub net_ip: [u8; 4],
     pub jinnwall_active_conns: usize,
     pub jinnwall_drops: u64,
+    pub jinnwall_inspected: u64,
+    pub jinnwall_accepted: u64,
+    pub jinnwall_profile: JinnWallProfile,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CapabilityMode {
-    /// Renderização 100% opaca, máxima economia de ciclos de CPU
+    /// Renderizacao 100% opaca, maxima economia de ciclos de CPU
     Basic,
     /// Alpha blending linear leve, sombras discretas de 1 passo
     Balanced,
-    /// Composição avançada com desfoque e acentuações luminescentes
+    /// Composicao avancada com desfoque e acentuacoes luminescentes
     Advanced,
 }
 
@@ -28,5 +46,8 @@ pub trait SystemHost {
     fn yield_cpu(&self);
     fn storage_profile_name(&self) -> &'static str;
     fn cycle_storage_profile(&self);
+    fn jinnwall_profile(&self) -> JinnWallProfile;
+    fn set_jinnwall_profile(&self, profile: JinnWallProfile);
+    fn toggle_jinnwall_profile(&self) -> JinnWallProfile;
     fn reboot(&self) -> !;
 }

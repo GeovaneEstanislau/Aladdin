@@ -1,4 +1,4 @@
-//! Primitivas Gráficas 2D de Alta Performance com Suporte a Recorte (Clipping)
+﻿//! Primitivas Gráficas 2D de Alta Performance com Suporte a Recorte (Clipping)
 
 use super::damage::ClipRect;
 
@@ -163,7 +163,8 @@ pub fn draw_progress_bar(
     draw_rect_outline(buf, screen_w, screen_h, x, y, width, height, border);
 
     if total > 0 && used > 0 && width > 4 {
-        let fill_w = ((width - 4) * used.min(total)) / total;
+        let max_w = width - 4;
+        let fill_w = ((max_w as u128 * used.min(total) as u128) / total as u128) as usize;
         if fill_w > 0 {
             fill_rect(buf, screen_w, screen_h, x + 2, y + 2, fill_w, height.saturating_sub(4), fg);
         }

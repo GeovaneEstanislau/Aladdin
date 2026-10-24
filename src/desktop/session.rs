@@ -127,7 +127,7 @@ impl AladdinSession {
 
     fn init_default_windows(&mut self) {
         // Janela 0: Monitor de Sistema (aberta)
-        self.wm.windows[0] = Some(Window::new(0, "Jinn OS - Monitor de Sistema", 60, 60, 380, 220));
+        self.wm.windows[0] = Some(Window::new(0, "Jinn OS - Monitor de Sistema", 60, 60, 380, 270));
 
         // Janela 1: Terminal Interativo (aberta e com foco)
         self.wm.windows[1] = Some(Window::new(1, "Terminal Interativo (Ring 3 Ready)", 470, 80, 460, 240));
@@ -143,7 +143,7 @@ impl AladdinSession {
         self.wm.windows[3] = Some(w3);
 
         // Janela 4: Ajustes e Configurações (fechada)
-        let mut w4 = Window::new(4, "Ajustes do Aladdin Desktop", 200, 150, 420, 220);
+        let mut w4 = Window::new(4, "Ajustes do Aladdin Desktop", 200, 150, 440, 276);
         w4.is_open = false;
         self.wm.windows[4] = Some(w4);
 
@@ -618,8 +618,16 @@ impl AladdinSession {
                             if mx >= b2_x && mx <= b2_x + 100 { self.mode = CapabilityMode::Advanced; }
                         }
 
+                        // Alternar Perfil Firewall JinnWall
+                        let fw_btn_y = win.y + 166 + 40;
+                        if my >= fw_btn_y && my <= fw_btn_y + 18 {
+                            if mx >= win.x + 20 && mx <= win.x + 240 {
+                                sys.toggle_jinnwall_profile();
+                            }
+                        }
+
                         // Ações rápidas
-                        let act_y = win.y + 172;
+                        let act_y = win.y + 236;
                         if my >= act_y && my <= act_y + 24 {
                             // Ciclar JSA
                             if mx >= win.x + 12 && mx <= win.x + 152 {
