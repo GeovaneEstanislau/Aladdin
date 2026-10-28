@@ -1,4 +1,4 @@
-extern crate aladdin;
+﻿extern crate aladdin;
 extern crate alloc;
 
 use aladdin::contracts::framebuffer::DirtyRect;
@@ -814,4 +814,181 @@ fn test_client_window_event_queue_and_polling() {
     assert!(wm.push_client_event(win_id, ev1));
     wm.close_window(win_id);
     assert_eq!(wm.poll_client_event(pid, win_id), Err(WindowOpError::NotFound));
+}
+#[test]
+fn test_client_window_event_queue_overflow_and_close_protection() {
+    use aladdin::contracts::input::{
+        ClientWindowEvent, EVENT_KEY_DOWN, EVENT_MOUSE_DOWN, EVENT_WINDOW_CLOSE, MAX_CLIENT_EVENTS,
+    };
+    use aladdin::wm::WindowManager;
+
+    let mut wm = WindowManager::new();
+    let pid = 10;
+    let win_id = wm.create_client_window(pid, "Queue Test", 10, 10, 100, 100).expect("Window ok");
+
+    // 1. Enche a fila com 16 eventos normais
+    for i in 0..MAX_CLIENT_EVENTS {
+        let ev = ClientWindowEvent {
+            event_type: EVENT_KEY_DOWN,
+            win_id: win_id as u32,
+            x: 0,
+            y: 0,
+            button_or_key: b'a' as u32 + i as u32,
+            modifiers: 0,
+            timestamp: i as u64,
+        };
+        assert!(wm.push_client_event(win_id, ev));
+    }
+    assert!(wm.client_events[win_id].is_full());
+
+    // 2. Enfileira EVENT_WINDOW_CLOSE em fila cheia: deve ser aceito e descartar o evento normal mais antigo
+    let close_ev = ClientWindowEvent {
+        event_type: EVENT_WINDOW_CLOSE,
+        win_id: win_id as u32,
+        x: 0,
+        y: 0,
+        button_or_key: 0,
+        modifiers: 0,
+        timestamp: 100,
+    };
+    assert!(wm.push_client_event(win_id, close_ev));
+    assert!(wm.client_events[win_id].contains_close_event());
+
+    // 3. Tenta inundar a fila com novos eventos normais
+    for i in 0..20 {
+        let ev = ClientWindowEvent {
+            event_type: EVENT_MOUSE_DOWN,
+            win_id: win_id as u32,
+            x: i as i32,
+            y: i as i32,
+            button_or_key: 1,
+            modifiers: 0,
+            timestamp: 200 + i as u64,
+        };
+        wm.push_client_event(win_id, ev);
+    }
+
+    // 4. Garante que EVENT_WINDOW_CLOSE NUNCA foi descartado pela inundação de eventos
+    assert!(wm.client_events[win_id].contains_close_event());
+
+    // 5. Coleta até encontrar o close_ev
+    let mut found_close = false;
+    while let Ok(Some(ev)) = wm.poll_client_event(pid, win_id) {
+        if ev.event_type == EVENT_WINDOW_CLOSE {
+            found_close = true;
+            break;
+        }
+    }
+    assert!(found_close, "EVENT_WINDOW_CLOSE deve ser preservado mesmo sob transbordo");
+}
+
+
+#[test]
+fn test_client_window_lifecycle_and_dispatch_in_session() {
+    use aladdin::contracts::input::{
+        EVENT_KEY_DOWN, EVENT_MOUSE_DOWN, EVENT_MOUSE_UP, EVENT_WINDOW_CLOSE,
+    };
+    use aladdin::contracts::system::{JinnWallProfile, SystemHost, SystemStats};
+    use aladdin::contracts::vfs::VfsHost;
+    use aladdin::contracts::process::ProcessHost;
+    use aladdin::desktop::session::AladdinSession;
+
+    struct DummySys;
+    impl SystemHost for DummySys {
+        fn stats(&self) -> SystemStats {
+            SystemStats {
+                uptime_secs: 10,
+                task_count: 3,
+                sched_ticks: 50,
+                used_ram_mb: 64,
+                total_ram_mb: 512,
+                current_tick: 50,
+                net_ip: [10, 0, 2, 15],
+                jinnwall_active_conns: 0,
+                jinnwall_drops: 0,
+                jinnwall_inspected: 0,
+                jinnwall_accepted: 0,
+                jinnwall_profile: JinnWallProfile::Development,
+            }
+        }
+        fn yield_cpu(&self) {}
+        fn storage_profile_name(&self) -> &'static str { "Test" }
+        fn cycle_storage_profile(&self) {}
+        fn jinnwall_profile(&self) -> JinnWallProfile {
+            JinnWallProfile::Development
+        }
+        fn set_jinnwall_profile(&self, _p: JinnWallProfile) {}
+        fn toggle_jinnwall_profile(&self) -> JinnWallProfile {
+            JinnWallProfile::PublicSecure
+        }
+        fn reboot(&self) -> ! { loop {} }
+    }
+
+    struct DummyVfs;
+    impl VfsHost for DummyVfs {
+        fn readdir(&self, _path: &str, _cb: &mut dyn FnMut(&str, bool, bool, bool)) {}
+        fn read_file(&self, _path: &str, _dest: &mut [u8]) -> Result<usize, ()> { Ok(0) }
+        fn write_file(&self, _path: &str, _data: &[u8]) -> Result<(), ()> { Ok(()) }
+        fn remove_file(&self, _path: &str) -> Result<(), ()> { Ok(()) }
+    }
+
+    struct DummyProc;
+    impl ProcessHost for DummyProc {
+        fn spawn_app(&mut self, _path: &str) -> Result<usize, ()> { Ok(1) }
+        fn execute_command(&mut self, _cmd: &str, _cb: &mut dyn FnMut(&str, u32)) {}
+    }
+
+    let mut session = AladdinSession::new();
+    let sys = DummySys;
+    let vfs = DummyVfs;
+    let mut proc = DummyProc;
+    let pid = 77;
+
+    let win_id = session.create_client_window(pid, "Lifecycle Window", 200, 150).expect("Window created");
+    let (wx, wy, w_w) = {
+        let win = session.wm.windows[win_id].as_ref().unwrap();
+        (win.x, win.y, win.width)
+    };
+
+    // 1. Clique dentro da área cliente -> Gera EVENT_MOUSE_DOWN
+    let client_click_x = wx + 30;
+    let client_click_y = wy + 40;
+    session.handle_mouse(client_click_x, client_click_y, 1, &sys, &vfs, &mut proc, 1024, 768);
+
+    let ev = session.poll_client_event(pid, win_id).expect("poll ok").expect("event found");
+    assert_eq!(ev.event_type, EVENT_MOUSE_DOWN);
+    assert_eq!(ev.button_or_key, 1);
+    assert_eq!(ev.x, 29); // wx + 30 - (wx + 1)
+    assert_eq!(ev.y, 15); // wy + 40 - (wy + 24 + 1)
+
+    // 2. Solta o botão esquerdo -> Gera EVENT_MOUSE_UP
+    session.handle_mouse(client_click_x, client_click_y, 0, &sys, &vfs, &mut proc, 1024, 768);
+    let ev_up = session.poll_client_event(pid, win_id).expect("poll ok").expect("event up found");
+    assert_eq!(ev_up.event_type, EVENT_MOUSE_UP);
+
+    // 3. Pressiona tecla com janela cliente focada -> Gera EVENT_KEY_DOWN
+    session.handle_key(b'k', &mut proc, &sys);
+    let ev_key = session.poll_client_event(pid, win_id).expect("poll ok").expect("event key found");
+    assert_eq!(ev_key.event_type, EVENT_KEY_DOWN);
+    assert_eq!(ev_key.button_or_key, b'k' as u32);
+
+    // 4. Clique no botão [X] de fechar
+    let close_btn_x = wx + w_w - 16;
+    let close_btn_y = wy + 8;
+    session.handle_mouse(close_btn_x, close_btn_y, 1, &sys, &vfs, &mut proc, 1024, 768);
+
+    // Janela fica oculta imediatamente mas NÃO é destruída ainda
+    let win_state = session.wm.windows[win_id].as_ref().expect("Janela deve existir até close");
+    assert!(!win_state.is_open);
+    assert!(win_state.close_requested);
+
+    // Processo cliente recebe EVENT_WINDOW_CLOSE
+    let ev_close = session.poll_client_event(pid, win_id).expect("poll ok").expect("close event found");
+    assert_eq!(ev_close.event_type, EVENT_WINDOW_CLOSE);
+
+    // 5. Processo cliente confirma e encerra a janela via syscall
+    assert!(session.close_client_window(pid, win_id).is_ok());
+
+    // Agora sim a janela é completamente destruída
+    assert_eq!(session.poll_client_event(pid, win_id), Err(aladdin::wm::WindowOpError::NotFound));
 }

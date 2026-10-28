@@ -1,4 +1,4 @@
-//! Estrutura e Comportamento de Janelas com Recorte de Superfície
+﻿//! Estrutura e Comportamento de Janelas com Recorte de Superfície
 
 use crate::contracts::framebuffer::DirtyRect;
 use crate::compositor::ClipRect;
@@ -28,6 +28,7 @@ pub struct Window {
     pub can_minimize: bool,
     pub can_maximize: bool,
     pub can_close: bool,
+    pub close_requested: bool,
     pub owner_pid: Option<usize>,
 }
 
@@ -63,6 +64,7 @@ impl Window {
             can_minimize: true,
             can_maximize: true,
             can_close: true,
+            close_requested: false,
             owner_pid: None,
         }
     }
@@ -127,6 +129,15 @@ impl Window {
         let btn_x = self.x + self.width.saturating_sub(24);
         let btn_y = self.y + 4;
         px >= btn_x && px < btn_x + BTN_SIZE && py >= btn_y && py < btn_y + BTN_SIZE
+    }
+
+    pub fn is_in_client_area(&self, px: usize, py: usize) -> bool {
+        if !self.contains_point(px, py) { return false; }
+        let client_y0 = self.y + TITLE_BAR_HEIGHT;
+        let client_y1 = (self.y + self.height).saturating_sub(1);
+        let client_x0 = self.x + 1;
+        let client_x1 = (self.x + self.width).saturating_sub(1);
+        px >= client_x0 && px < client_x1 && py >= client_y0 && py < client_y1
     }
 
     pub fn toggle_maximize(&mut self, screen_w: usize, screen_h: usize, top_panel_h: usize, dock_h: usize) -> DirtyRect {

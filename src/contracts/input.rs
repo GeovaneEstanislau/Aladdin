@@ -71,7 +71,7 @@ impl ClientWindowEvent {
 
 pub const MAX_CLIENT_EVENTS: usize = 16;
 
-/// Fila circular determinística de eventos por janela cliente
+/// Fila circular determinística de eventos por janela cliente com política de proteção para fechamento
 #[derive(Debug, Clone, Copy)]
 pub struct ClientEventQueue {
     buf: [ClientWindowEvent; MAX_CLIENT_EVENTS],
@@ -90,11 +90,49 @@ impl ClientEventQueue {
         }
     }
 
+    /// Remove o evento não-crítico mais antigo da fila para liberar espaço.
+    /// Retorna `true` se um evento foi removido, ou `false` se todos os eventos são de fechamento.
+    fn drop_oldest_non_close(&mut self) -> bool {
+        for i in 0..self.count {
+            let idx = (self.head + i) % MAX_CLIENT_EVENTS;
+            if self.buf[idx].event_type != EVENT_WINDOW_CLOSE {
+                if i == 0 {
+                    self.head = (self.head + 1) % MAX_CLIENT_EVENTS;
+                } else {
+                    let mut cur = idx;
+                    for _ in i..(self.count - 1) {
+                        let nxt = (cur + 1) % MAX_CLIENT_EVENTS;
+                        self.buf[cur] = self.buf[nxt];
+                        cur = nxt;
+                    }
+                    self.tail = (self.tail + MAX_CLIENT_EVENTS - 1) % MAX_CLIENT_EVENTS;
+                }
+                self.count -= 1;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Enfileira um novo evento na fila da janela.
+    ///
+    /// Se a fila estiver cheia:
+    /// - Eventos `EVENT_WINDOW_CLOSE` têm prioridade máxima e descartam o evento normal mais antigo.
+    /// - Eventos normais descartam o evento normal mais antigo, mas NUNCA descartam `EVENT_WINDOW_CLOSE`.
     pub fn push(&mut self, event: ClientWindowEvent) -> bool {
         if self.count >= MAX_CLIENT_EVENTS {
-            // Descarta evento mais antigo se a fila estiver cheia
-            self.head = (self.head + 1) % MAX_CLIENT_EVENTS;
-            self.count -= 1;
+            if event.event_type == EVENT_WINDOW_CLOSE {
+                if !self.drop_oldest_non_close() {
+                    // Todos os 16 eventos são close: descarta o head mais antigo
+                    self.head = (self.head + 1) % MAX_CLIENT_EVENTS;
+                    self.count -= 1;
+                }
+            } else {
+                if !self.drop_oldest_non_close() {
+                    // Sem vaga sem violar close pendente
+                    return false;
+                }
+            }
         }
         self.buf[self.tail] = event;
         self.tail = (self.tail + 1) % MAX_CLIENT_EVENTS;
@@ -118,6 +156,20 @@ impl ClientEventQueue {
 
     pub fn is_empty(&self) -> bool {
         self.count == 0
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.count >= MAX_CLIENT_EVENTS
+    }
+
+    pub fn contains_close_event(&self) -> bool {
+        for i in 0..self.count {
+            let idx = (self.head + i) % MAX_CLIENT_EVENTS;
+            if self.buf[idx].event_type == EVENT_WINDOW_CLOSE {
+                return true;
+            }
+        }
+        false
     }
 
     pub fn clear(&mut self) {

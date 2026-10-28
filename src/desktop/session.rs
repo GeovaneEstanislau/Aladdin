@@ -1,4 +1,4 @@
-//! Gerenciador de Sessão e Laço Principal do Aladdin Desktop
+﻿//! Gerenciador de Sessão e Laço Principal do Aladdin Desktop
 
 use crate::contracts::framebuffer::{DirtyRect, FramebufferDevice};
 use crate::contracts::system::{CapabilityMode, SystemHost};
@@ -312,6 +312,26 @@ impl AladdinSession {
                     win.is_dragging = false;
                 }
             }
+            if prev_left_clicked {
+                if let Some(win_idx) = self.wm.find_window_at(mx, my) {
+                    if let Some(win) = self.wm.windows[win_idx].as_ref() {
+                        if win.owner_pid.is_some() && win.is_in_client_area(mx, my) {
+                            let cx = mx.saturating_sub(win.x + 1) as i32;
+                            let cy = my.saturating_sub(win.y + crate::wm::TITLE_BAR_HEIGHT + 1) as i32;
+                            let ev = crate::contracts::input::ClientWindowEvent {
+                                event_type: crate::contracts::input::EVENT_MOUSE_UP,
+                                win_id: win_idx as u32,
+                                x: cx,
+                                y: cy,
+                                button_or_key: 1,
+                                modifiers: 0,
+                                timestamp: sys.stats().current_tick,
+                            };
+                            self.wm.push_client_event(win_idx, ev);
+                        }
+                    }
+                }
+            }
         }
 
         // Atualiza arrasto de janela ativo
@@ -509,15 +529,35 @@ impl AladdinSession {
             if let Some(clicked_idx) = self.wm.find_window_at(mx, my) {
                 self.wm.bring_to_front(clicked_idx);
 
+                let mut client_ev_to_push: Option<crate::contracts::input::ClientWindowEvent> = None;
+                let mut client_close_force = false;
+
                 if let Some(win) = self.wm.windows[clicked_idx].as_mut() {
                     // Controles de janela
                     if win.is_in_close_btn(mx, my) {
                         let is_client = win.owner_pid.is_some();
-                        win.is_open = false;
                         if is_client {
-                            self.wm.close_window(clicked_idx);
+                            if win.close_requested {
+                                client_close_force = true;
+                            } else {
+                                win.close_requested = true;
+                                win.is_open = false;
+                                client_ev_to_push = Some(crate::contracts::input::ClientWindowEvent {
+                                    event_type: crate::contracts::input::EVENT_WINDOW_CLOSE,
+                                    win_id: clicked_idx as u32,
+                                    x: (mx.saturating_sub(win.x)) as i32,
+                                    y: (my.saturating_sub(win.y)) as i32,
+                                    button_or_key: 0,
+                                    modifiers: 0,
+                                    timestamp: sys.stats().current_tick,
+                                });
+                            }
+                        } else {
+                            win.is_open = false;
                         }
-                        return (false, None);
+                        if !is_client {
+                            return (false, None);
+                        }
                     }
                     if win.is_in_min_btn(mx, my) {
                         win.is_minimized = true;
@@ -536,7 +576,22 @@ impl AladdinSession {
                         return (true, None);
                     }
 
-                    // Interações de corpo da janela
+                    // Se for janela cliente e o clique ocorreu na área interna de desenho
+                    if win.owner_pid.is_some() && win.is_in_client_area(mx, my) {
+                        let cx = mx.saturating_sub(win.x + 1) as i32;
+                        let cy = my.saturating_sub(win.y + crate::wm::TITLE_BAR_HEIGHT + 1) as i32;
+                        client_ev_to_push = Some(crate::contracts::input::ClientWindowEvent {
+                            event_type: crate::contracts::input::EVENT_MOUSE_DOWN,
+                            win_id: clicked_idx as u32,
+                            x: cx,
+                            y: cy,
+                            button_or_key: 1,
+                            modifiers: 0,
+                            timestamp: sys.stats().current_tick,
+                        });
+                    }
+
+                    // Interações de corpo da janela do sistema
                     if win.id == 1 {
                         // Terminal: botão + Executar ola-mundo
                         let btn_y = win.y + win.height - 34;
@@ -646,7 +701,17 @@ impl AladdinSession {
                                 sys.reboot();
                             }
                         }
-                    }
+                    } }
+
+                if let Some(ev) = client_ev_to_push {
+                    self.wm.push_client_event(clicked_idx, ev);
+                    self.client_damaged = true;
+                    return (false, None);
+                }
+                if client_close_force {
+                    self.wm.close_window(clicked_idx);
+                    self.client_damaged = true;
+                    return (false, None);
                 }
             }
         }
@@ -654,7 +719,7 @@ impl AladdinSession {
         (dragging_any, drag_damage)
     }
 
-    pub fn handle_key(&mut self, ch: u8, proc_host: &mut dyn ProcessHost) {
+    pub fn handle_key(&mut self, ch: u8, proc_host: &mut dyn ProcessHost, sys: &dyn SystemHost) {
         if ch == 0x1B { // ASCII ESC: sair para o console texto
             self.should_exit = true;
             return;
@@ -663,6 +728,19 @@ impl AladdinSession {
         let top_idx = self.wm.top_window_id();
         if top_idx == 1 { // Terminal interativo
             self.term.handle_key(ch, proc_host);
+        } else if let Some(win) = self.wm.windows[top_idx].as_ref() {
+            if win.owner_pid.is_some() {
+                let ev = crate::contracts::input::ClientWindowEvent {
+                    event_type: crate::contracts::input::EVENT_KEY_DOWN,
+                    win_id: top_idx as u32,
+                    x: 0,
+                    y: 0,
+                    button_or_key: ch as u32,
+                    modifiers: 0,
+                    timestamp: sys.stats().current_tick,
+                };
+                self.wm.push_client_event(top_idx, ev);
+            }
         }
     }
 
@@ -695,7 +773,7 @@ impl AladdinSession {
             // 1. Processa entrada do teclado
             let mut key_pressed = false;
             while let Some(ch) = poll_key() {
-                self.handle_key(ch, proc_host);
+                self.handle_key(ch, proc_host, sys);
                 key_pressed = true;
                 if self.should_exit { break; }
             }
