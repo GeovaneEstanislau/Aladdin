@@ -125,6 +125,14 @@ impl AladdinSession {
         self.client_damaged = true;
     }
 
+    pub fn poll_client_event(
+        &mut self,
+        owner_pid: usize,
+        win_id: usize,
+    ) -> Result<Option<crate::contracts::input::ClientWindowEvent>, crate::wm::WindowOpError> {
+        self.wm.poll_client_event(owner_pid, win_id)
+    }
+
     fn init_default_windows(&mut self) {
         // Janela 0: Monitor de Sistema (aberta)
         self.wm.windows[0] = Some(Window::new(0, "Jinn OS - Monitor de Sistema", 60, 60, 380, 270));
