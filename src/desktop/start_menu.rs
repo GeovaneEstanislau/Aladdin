@@ -29,7 +29,7 @@ pub fn render_start_menu(
         "1. Monitor de Recursos",
         "2. Terminal Interativo",
         "3. Arquivos /disk (FAT32)",
-        "4. Executar ola-mundo (U3)",
+        "4. Jinn Browser (Web)",
         "5. Sobre o Jinn OS",
         "6. Ciclar Perfil JSA",
         "7. Reiniciar Maquina",

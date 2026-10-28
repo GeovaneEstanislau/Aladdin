@@ -2,7 +2,7 @@
 
 use crate::compositor::*;
 use crate::font::*;
-use crate::wm::WindowManager;
+use crate::wm::{WindowManager, MAX_WINDOWS};
 
 pub const DOCK_WIDTH: usize = 580;
 pub const DOCK_HEIGHT: usize = 44;
@@ -23,11 +23,21 @@ pub fn render_dock(
     fill_rect(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, COLOR_DOCK);
     draw_rect_outline(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, COLOR_CYAN);
 
+    let mut client_win_id = usize::MAX;
+    for i in 5..MAX_WINDOWS {
+        if let Some(w) = &wm.windows[i] {
+            if w.is_open {
+                client_win_id = i;
+                break;
+            }
+        }
+    }
+
     let slots = [
         ("[#] Monitor", dock_x + 6, 0),
         ("[>] Console", dock_x + 100, 1),
         ("[~] Arquivos", dock_x + 194, 3),
-        ("[*] Apps U3", dock_x + 288, usize::MAX),
+        ("[@] Browser", dock_x + 288, client_win_id),
         ("[%] Ajustes", dock_x + 382, 4),
         ("[?] Sobre", dock_x + 476, 2),
     ];

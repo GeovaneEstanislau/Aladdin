@@ -156,7 +156,7 @@ impl TerminalApp {
         let btn_y = win_y + win_h - 34;
         fill_rect(buf, screen_w, screen_h, win_x + 8, btn_y, 220, 24, COLOR_BTN_BG);
         draw_rect_outline(buf, screen_w, screen_h, win_x + 8, btn_y, 220, 24, 0x0093_C5FD);
-        draw_string(buf, screen_w, screen_h, "+ Executar ola-mundo (U3)", win_x + 14, btn_y + 4, COLOR_WHITE, Some(COLOR_BTN_BG));
+        draw_string(buf, screen_w, screen_h, "+ Executar Jinn Browser", win_x + 14, btn_y + 4, COLOR_WHITE, Some(COLOR_BTN_BG));
 
         if spawn_count > 0 {
             draw_label_and_num(buf, screen_w, screen_h, "Apps: ", spawn_count, " PIDs", win_x + 236, btn_y + 6, COLOR_EMERALD, Some(COLOR_CARD));

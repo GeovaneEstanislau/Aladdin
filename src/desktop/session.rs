@@ -415,9 +415,9 @@ impl AladdinSession {
                                 self.wm.bring_to_front(3);
                             }
                             3 => {
-                                if let Ok(pid) = proc_host.spawn_app("/disk/ola.elf") {
+                                if let Ok(pid) = proc_host.spawn_app("/disk/browser.elf").or_else(|_| proc_host.spawn_app("/disk/ola.elf")) {
                                     self.spawn_count += 1;
-                                    self.term.push_line("Processo Ring 3 iniciado!", COLOR_EMERALD);
+                                    self.term.push_line("Jinn Browser Ring 3 iniciado!", COLOR_EMERALD);
                                     let mut p_buf = [0u8; 16];
                                     let p_len = crate::compositor::format_num(pid, &mut p_buf);
                                     if let Ok(pid_str) = core::str::from_utf8(&p_buf[..p_len]) {
@@ -484,16 +484,34 @@ impl AladdinSession {
                         }
                     }
                     3 => {
-                        if let Ok(pid) = proc_host.spawn_app("/disk/ola.elf") {
-                            self.spawn_count += 1;
-                            self.term.push_line("Processo Ring 3 criado!", COLOR_EMERALD);
-                            let mut p_buf = [0u8; 16];
-                            let p_len = crate::compositor::format_num(pid, &mut p_buf);
-                            if let Ok(pid_str) = core::str::from_utf8(&p_buf[..p_len]) {
-                                self.term.push_line(pid_str, COLOR_CYAN);
+                        let mut client_win_id = None;
+                        for i in 5..crate::wm::MAX_WINDOWS {
+                            if let Some(w) = &self.wm.windows[i] {
+                                if w.is_open {
+                                    client_win_id = Some(i);
+                                    break;
+                                }
                             }
-                            if let Some(w) = self.wm.windows[1].as_mut() { w.is_open = true; w.is_minimized = false; }
-                            self.wm.bring_to_front(1);
+                        }
+                        if let Some(c_id) = client_win_id {
+                            if let Some(w) = self.wm.windows[c_id].as_mut() {
+                                if !w.is_minimized && top_id == c_id {
+                                    w.is_minimized = true;
+                                } else {
+                                    w.is_minimized = false;
+                                    self.wm.bring_to_front(c_id);
+                                }
+                            }
+                        } else {
+                            if let Ok(pid) = proc_host.spawn_app("/disk/browser.elf").or_else(|_| proc_host.spawn_app("/disk/ola.elf")) {
+                                self.spawn_count += 1;
+                                self.term.push_line("Jinn Browser Ring 3 iniciado!", COLOR_EMERALD);
+                                let mut p_buf = [0u8; 16];
+                                let p_len = crate::compositor::format_num(pid, &mut p_buf);
+                                if let Ok(pid_str) = core::str::from_utf8(&p_buf[..p_len]) {
+                                    self.term.push_line(pid_str, COLOR_CYAN);
+                                }
+                            }
                         }
                     }
                     4 => {
@@ -596,9 +614,9 @@ impl AladdinSession {
                         // Terminal: botão + Executar ola-mundo
                         let btn_y = win.y + win.height - 34;
                         if mx >= win.x + 8 && mx <= win.x + 228 && my >= btn_y && my <= btn_y + 24 {
-                            if let Ok(pid) = proc_host.spawn_app("/disk/ola.elf") {
+                            if let Ok(pid) = proc_host.spawn_app("/disk/browser.elf").or_else(|_| proc_host.spawn_app("/disk/ola.elf")) {
                                 self.spawn_count += 1;
-                                self.term.push_line("Spawned ola-mundo (U3) via Terminal!", COLOR_EMERALD);
+                                self.term.push_line("Spawned Jinn Browser via Terminal!", COLOR_EMERALD);
                                 let mut p_buf = [0u8; 16];
                                 let p_len = crate::compositor::format_num(pid, &mut p_buf);
                                 if let Ok(pid_str) = core::str::from_utf8(&p_buf[..p_len]) {
