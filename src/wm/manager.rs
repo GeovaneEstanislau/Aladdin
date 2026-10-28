@@ -3,6 +3,7 @@
 use crate::compositor::*;
 use crate::font::*;
 use crate::contracts::system::CapabilityMode;
+use crate::contracts::input::{ClientEventQueue, ClientWindowEvent};
 use super::window::{Window, TITLE_BAR_HEIGHT};
 
 pub const MAX_WINDOWS: usize = 8;
@@ -18,6 +19,7 @@ pub struct WindowManager {
     pub windows: [Option<Window>; MAX_WINDOWS],
     pub order: [usize; MAX_WINDOWS], // 0 = fundo, MAX-1 = topo
     pub client_buffers: [Option<alloc::vec::Vec<u32>>; MAX_WINDOWS],
+    pub client_events: [ClientEventQueue; MAX_WINDOWS],
 }
 
 impl WindowManager {
@@ -27,6 +29,7 @@ impl WindowManager {
             windows: [None; MAX_WINDOWS],
             order: [0, 1, 2, 3, 4, 5, 6, 7],
             client_buffers: [NONE_BUF; MAX_WINDOWS],
+            client_events: [ClientEventQueue::new(); MAX_WINDOWS],
         }
     }
 
@@ -67,6 +70,7 @@ impl WindowManager {
     pub fn close_window(&mut self, idx: usize) -> Option<DirtyRect> {
         if idx < MAX_WINDOWS {
             self.client_buffers[idx] = None;
+            self.client_events[idx].clear();
             if let Some(win) = self.windows[idx].take() {
                 return Some(win.bounds());
             }
@@ -94,6 +98,7 @@ impl WindowManager {
         win.owner_pid = Some(owner_pid);
         let id = self.open_window(win)?;
         self.client_buffers[id] = Some(alloc::vec![0x000F_172A; client_pixels]);
+        self.client_events[id].clear();
         Ok(id)
     }
 
@@ -131,6 +136,27 @@ impl WindowManager {
         }
         self.close_window(win_id);
         Ok(())
+    }
+
+    pub fn push_client_event(&mut self, win_id: usize, event: ClientWindowEvent) -> bool {
+        if win_id < MAX_WINDOWS && self.windows[win_id].is_some() {
+            self.client_events[win_id].push(event)
+        } else {
+            false
+        }
+    }
+
+    pub fn poll_client_event(
+        &mut self,
+        owner_pid: usize,
+        win_id: usize,
+    ) -> Result<Option<ClientWindowEvent>, WindowOpError> {
+        if win_id >= MAX_WINDOWS { return Err(WindowOpError::NotFound); }
+        let win = self.windows[win_id].as_ref().ok_or(WindowOpError::NotFound)?;
+        if win.owner_pid != Some(owner_pid) {
+            return Err(WindowOpError::PermissionDenied);
+        }
+        Ok(self.client_events[win_id].pop())
     }
 
     pub fn close_all_for_pid(&mut self, pid: usize) {
