@@ -34,6 +34,20 @@ impl WindowManager {
     }
 
     pub fn top_window_id(&self) -> usize {
+        for i in (0..MAX_WINDOWS).rev() {
+            let wid = self.order[i];
+            if let Some(w) = self.windows[wid].as_ref() {
+                if w.is_open && !w.is_minimized {
+                    return wid;
+                }
+            }
+        }
+        for i in (0..MAX_WINDOWS).rev() {
+            let wid = self.order[i];
+            if self.windows[wid].is_some() {
+                return wid;
+            }
+        }
         self.order[MAX_WINDOWS - 1]
     }
 
@@ -69,6 +83,19 @@ impl WindowManager {
 
     pub fn close_window(&mut self, idx: usize) -> Option<DirtyRect> {
         if idx < MAX_WINDOWS {
+            let mut cur_pos = None;
+            for i in 0..MAX_WINDOWS {
+                if self.order[i] == idx {
+                    cur_pos = Some(i);
+                    break;
+                }
+            }
+            if let Some(pos) = cur_pos {
+                for i in (1..=pos).rev() {
+                    self.order[i] = self.order[i - 1];
+                }
+                self.order[0] = idx;
+            }
             self.client_buffers[idx] = None;
             self.client_events[idx].clear();
             if let Some(win) = self.windows[idx].take() {

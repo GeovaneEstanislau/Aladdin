@@ -104,6 +104,12 @@ impl AladdinSession {
         None
     }
 
+    pub fn register_browser_pid(&mut self, pid: usize) {
+        if self.browser_pid.is_none() {
+            self.browser_pid = Some(pid);
+        }
+    }
+
     pub fn launch_or_focus_browser(&mut self, proc_host: &mut dyn ProcessHost) {
         if let Some(win_id) = self.find_browser_window_id() {
             if let Some(w) = self.wm.windows[win_id].as_mut() {
@@ -783,16 +789,9 @@ impl AladdinSession {
     }
 
     pub fn handle_key(&mut self, ch: u8, proc_host: &mut dyn ProcessHost, sys: &dyn SystemHost) {
-        if ch == 0x1B { // ASCII ESC: sair para o console texto
-            self.should_exit = true;
-            return;
-        }
-
         let top_idx = self.wm.top_window_id();
-        if top_idx == 1 { // Terminal interativo
-            self.term.handle_key(ch, proc_host);
-        } else if let Some(win) = self.wm.windows[top_idx].as_ref() {
-            if win.owner_pid.is_some() {
+        if let Some(win) = self.wm.windows[top_idx].as_ref() {
+            if win.owner_pid.is_some() && win.is_open && !win.is_minimized {
                 let ev = crate::contracts::input::ClientWindowEvent {
                     event_type: crate::contracts::input::EVENT_KEY_DOWN,
                     win_id: top_idx as u32,
@@ -803,7 +802,17 @@ impl AladdinSession {
                     timestamp: sys.stats().current_tick,
                 };
                 self.wm.push_client_event(top_idx, ev);
+                return;
             }
+        }
+
+        if ch == 0x1B { // ASCII ESC: sair para o console texto quando nenhuma janela cliente estiver ativa
+            self.should_exit = true;
+            return;
+        }
+
+        if top_idx == 1 { // Terminal interativo
+            self.term.handle_key(ch, proc_host);
         }
     }
 
