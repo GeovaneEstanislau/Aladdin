@@ -1043,6 +1043,14 @@ fn test_browser_instance_identification_and_lifecycle() {
     assert_eq!(session.browser_pid, None);
     assert_eq!(session.browser_win_id, None);
 
+    // 2.1 Adversarial: Processo impostor (PID 666) tenta se passar por navegador pelo titulo
+    let _rogue_win_id = session.create_client_window(666, "Jinn Browser v0.2.0 (Fake)", 300, 200)
+        .expect("Janela impostora criada");
+    // O titulo NAO pode enganar a sessao nem associar o navegador sem spawn_app legitimo!
+    assert_eq!(session.find_browser_window_id(), None);
+    assert_eq!(session.browser_pid, None);
+    assert_eq!(session.browser_win_id, None);
+
     // 3. Lançamento do navegador via sessão
     session.launch_or_focus_browser(&mut proc);
     assert_eq!(proc.spawned_path.as_deref(), Some("/disk/browser.elf"));
@@ -1052,11 +1060,11 @@ fn test_browser_instance_identification_and_lifecycle() {
     // 4. Processo do navegador cria sua janela
     let browser_win_id = session.create_client_window(105, "Jinn Browser v0.2.0", 300, 180)
         .expect("Janela do browser criada");
-    assert_eq!(browser_win_id, 6);
+    assert_eq!(browser_win_id, 7);
 
     // Identificação explícita do navegador deve retornar o slot 6, e NÃO o slot 5
-    assert_eq!(session.find_browser_window_id(), Some(6));
-    assert_eq!(session.browser_win_id, Some(6));
+    assert_eq!(session.find_browser_window_id(), Some(7));
+    assert_eq!(session.browser_win_id, Some(7));
 
     // 5. Tentativa de novo lançamento não duplica o processo
     proc.spawned_path = None;
@@ -1064,20 +1072,20 @@ fn test_browser_instance_identification_and_lifecycle() {
     // NÃO deve ter chamado spawn_app novamente
     assert_eq!(proc.spawned_path, None);
     // Janela deve estar no topo
-    assert_eq!(session.wm.top_window_id(), 6);
+    assert_eq!(session.wm.top_window_id(), 7);
 
     // 6. Minimização e restauração
-    let w = session.wm.windows[6].as_mut().unwrap();
+    let w = session.wm.windows[7].as_mut().unwrap();
     w.is_minimized = true;
-    assert_eq!(session.find_browser_window_id(), Some(6));
+    assert_eq!(session.find_browser_window_id(), Some(7));
 
     session.launch_or_focus_browser(&mut proc);
-    let w_restored = session.wm.windows[6].as_ref().unwrap();
+    let w_restored = session.wm.windows[7].as_ref().unwrap();
     assert!(!w_restored.is_minimized);
     assert!(w_restored.is_open);
 
     // 7. Fechamento da janela do navegador
-    assert!(session.close_client_window(105, 6).is_ok());
+    assert!(session.close_client_window(105, 7).is_ok());
     assert_eq!(session.find_browser_window_id(), None);
     assert_eq!(session.browser_win_id, None);
 

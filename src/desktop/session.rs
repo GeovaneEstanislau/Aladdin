@@ -54,9 +54,6 @@ pub struct AladdinSession {
     pub browser_win_id: Option<usize>,
 }
 
-fn is_browser_title(title: &str) -> bool {
-    title.contains("Browser") || title.contains("browser")
-}
 
 impl AladdinSession {
     pub fn new() -> Self {
@@ -87,27 +84,20 @@ impl AladdinSession {
     }
 
     pub fn find_browser_window_id(&self) -> Option<usize> {
+        let b_pid = self.browser_pid?;
         if let Some(wid) = self.browser_win_id {
             if wid < crate::wm::MAX_WINDOWS {
                 if let Some(w) = &self.wm.windows[wid] {
-                    if w.is_open && !w.close_requested {
-                        if (self.browser_pid.is_some() && w.owner_pid == self.browser_pid)
-                            || is_browser_title(w.title_str())
-                        {
-                            return Some(wid);
-                        }
+                    if w.is_open && !w.close_requested && w.owner_pid == Some(b_pid) {
+                        return Some(wid);
                     }
                 }
             }
         }
-        for i in 0..crate::wm::MAX_WINDOWS {
-            if let Some(w) = &self.wm.windows[i] {
-                if w.is_open && !w.close_requested {
-                    if (self.browser_pid.is_some() && w.owner_pid == self.browser_pid)
-                        || is_browser_title(w.title_str())
-                    {
-                        return Some(i);
-                    }
+        for (i, slot) in self.wm.windows.iter().enumerate() {
+            if let Some(w) = slot {
+                if w.is_open && !w.close_requested && w.owner_pid == Some(b_pid) {
+                    return Some(i);
                 }
             }
         }
@@ -166,8 +156,7 @@ impl AladdinSession {
         let res = self.wm.create_client_window(owner_pid, title, x, y, client_w, client_h);
         if let Ok(win_id) = res {
             self.client_damaged = true;
-            if self.browser_pid == Some(owner_pid) || is_browser_title(title) {
-                self.browser_pid = Some(owner_pid);
+            if self.browser_pid == Some(owner_pid) {
                 self.browser_win_id = Some(win_id);
             }
         }
