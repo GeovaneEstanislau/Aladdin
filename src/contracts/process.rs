@@ -6,4 +6,10 @@ pub trait ProcessHost {
 
     /// Spawna um processo de usuário (Ring 3) a partir de um caminho ELF no VFS
     fn spawn_app(&mut self, path: &str) -> Result<usize, ()>;
+
+    /// Verifica se um processo com o determinado PID ainda está ativo no sistema
+    fn is_process_alive(&self, pid: usize) -> bool {
+        let _ = pid;
+        true
+    }
 }

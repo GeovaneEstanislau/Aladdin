@@ -1,4 +1,4 @@
-﻿//! Gerenciador de Sessão e Laço Principal do Aladdin Desktop
+//! Gerenciador de Sessão e Laço Principal do Aladdin Desktop
 
 use crate::contracts::framebuffer::{DirtyRect, FramebufferDevice};
 use crate::contracts::system::{CapabilityMode, SystemHost};
@@ -50,6 +50,12 @@ pub struct AladdinSession {
     pub cursor_saved_bg: [u32; CURSOR_W * CURSOR_H],
     pub cursor_valid: bool,
     pub client_damaged: bool,
+    pub browser_pid: Option<usize>,
+    pub browser_win_id: Option<usize>,
+}
+
+fn is_browser_title(title: &str) -> bool {
+    title.contains("Browser") || title.contains("browser")
 }
 
 impl AladdinSession {
@@ -71,11 +77,80 @@ impl AladdinSession {
             cursor_saved_bg: [0; CURSOR_W * CURSOR_H],
             cursor_valid: false,
             client_damaged: false,
+            browser_pid: None,
+            browser_win_id: None,
         };
 
         session.init_default_windows();
         session.term.init_defaults();
         session
+    }
+
+    pub fn find_browser_window_id(&self) -> Option<usize> {
+        if let Some(wid) = self.browser_win_id {
+            if wid < crate::wm::MAX_WINDOWS {
+                if let Some(w) = &self.wm.windows[wid] {
+                    if w.is_open && !w.close_requested {
+                        if (self.browser_pid.is_some() && w.owner_pid == self.browser_pid)
+                            || is_browser_title(w.title_str())
+                        {
+                            return Some(wid);
+                        }
+                    }
+                }
+            }
+        }
+        for i in 0..crate::wm::MAX_WINDOWS {
+            if let Some(w) = &self.wm.windows[i] {
+                if w.is_open && !w.close_requested {
+                    if (self.browser_pid.is_some() && w.owner_pid == self.browser_pid)
+                        || is_browser_title(w.title_str())
+                    {
+                        return Some(i);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    pub fn launch_or_focus_browser(&mut self, proc_host: &mut dyn ProcessHost) {
+        if let Some(win_id) = self.find_browser_window_id() {
+            if let Some(w) = self.wm.windows[win_id].as_mut() {
+                w.is_open = true;
+                w.is_minimized = false;
+            }
+            self.wm.bring_to_front(win_id);
+            self.client_damaged = true;
+            self.term.push_line("Jinn Browser ja ativo (foco restaurado)", COLOR_CYAN);
+            return;
+        }
+
+        if let Some(pid) = self.browser_pid {
+            if !proc_host.is_process_alive(pid) {
+                self.browser_pid = None;
+                self.browser_win_id = None;
+            }
+        }
+
+        match proc_host.spawn_app("/disk/browser.elf") {
+            Ok(pid) => {
+                self.browser_pid = Some(pid);
+                self.browser_win_id = None;
+                self.spawn_count += 1;
+                self.term.push_line("Jinn Browser Ring 3 iniciado!", COLOR_EMERALD);
+                let mut p_buf = [0u8; 16];
+                let p_len = crate::compositor::format_num(pid, &mut p_buf);
+                if let Ok(pid_str) = core::str::from_utf8(&p_buf[..p_len]) {
+                    self.term.push_line(pid_str, COLOR_CYAN);
+                }
+            }
+            Err(()) => {
+                self.browser_pid = None;
+                self.browser_win_id = None;
+                self.term.push_line("Erro: falha ao carregar /disk/browser.elf", COLOR_RUBY);
+            }
+        }
     }
 
     pub fn create_client_window(
@@ -89,8 +164,12 @@ impl AladdinSession {
         let x = 80 + (count * 28);
         let y = 60 + (count * 24);
         let res = self.wm.create_client_window(owner_pid, title, x, y, client_w, client_h);
-        if res.is_ok() {
+        if let Ok(win_id) = res {
             self.client_damaged = true;
+            if self.browser_pid == Some(owner_pid) || is_browser_title(title) {
+                self.browser_pid = Some(owner_pid);
+                self.browser_win_id = Some(win_id);
+            }
         }
         res
     }
@@ -116,6 +195,9 @@ impl AladdinSession {
         let res = self.wm.close_client_window(owner_pid, win_id);
         if res.is_ok() {
             self.client_damaged = true;
+            if self.browser_win_id == Some(win_id) {
+                self.browser_win_id = None;
+            }
         }
         res
     }
@@ -123,6 +205,10 @@ impl AladdinSession {
     pub fn close_windows_for_pid(&mut self, pid: usize) {
         self.wm.close_all_for_pid(pid);
         self.client_damaged = true;
+        if self.browser_pid == Some(pid) {
+            self.browser_pid = None;
+            self.browser_win_id = None;
+        }
     }
 
     pub fn poll_client_event(
@@ -282,7 +368,7 @@ impl AladdinSession {
         }
 
         // 5. Plank Dock inferior
-        render_dock(buf, screen_w, screen_h, mouse_x, mouse_y, &self.wm);
+        render_dock(buf, screen_w, screen_h, mouse_x, mouse_y, &self.wm, self.find_browser_window_id());
 
         // 6. Menu Iniciar popup (se ativo)
         if self.start_menu_open {
@@ -415,15 +501,7 @@ impl AladdinSession {
                                 self.wm.bring_to_front(3);
                             }
                             3 => {
-                                if let Ok(pid) = proc_host.spawn_app("/disk/browser.elf").or_else(|_| proc_host.spawn_app("/disk/ola.elf")) {
-                                    self.spawn_count += 1;
-                                    self.term.push_line("Jinn Browser Ring 3 iniciado!", COLOR_EMERALD);
-                                    let mut p_buf = [0u8; 16];
-                                    let p_len = crate::compositor::format_num(pid, &mut p_buf);
-                                    if let Ok(pid_str) = core::str::from_utf8(&p_buf[..p_len]) {
-                                        self.term.push_line(pid_str, COLOR_CYAN);
-                                    }
-                                }
+                                self.launch_or_focus_browser(proc_host);
                             }
                             4 => {
                                 if let Some(w) = self.wm.windows[2].as_mut() { w.is_open = true; w.is_minimized = false; }
@@ -484,16 +562,7 @@ impl AladdinSession {
                         }
                     }
                     3 => {
-                        let mut client_win_id = None;
-                        for i in 5..crate::wm::MAX_WINDOWS {
-                            if let Some(w) = &self.wm.windows[i] {
-                                if w.is_open {
-                                    client_win_id = Some(i);
-                                    break;
-                                }
-                            }
-                        }
-                        if let Some(c_id) = client_win_id {
+                        if let Some(c_id) = self.find_browser_window_id() {
                             if let Some(w) = self.wm.windows[c_id].as_mut() {
                                 if !w.is_minimized && top_id == c_id {
                                     w.is_minimized = true;
@@ -503,15 +572,7 @@ impl AladdinSession {
                                 }
                             }
                         } else {
-                            if let Ok(pid) = proc_host.spawn_app("/disk/browser.elf").or_else(|_| proc_host.spawn_app("/disk/ola.elf")) {
-                                self.spawn_count += 1;
-                                self.term.push_line("Jinn Browser Ring 3 iniciado!", COLOR_EMERALD);
-                                let mut p_buf = [0u8; 16];
-                                let p_len = crate::compositor::format_num(pid, &mut p_buf);
-                                if let Ok(pid_str) = core::str::from_utf8(&p_buf[..p_len]) {
-                                    self.term.push_line(pid_str, COLOR_CYAN);
-                                }
-                            }
+                            self.launch_or_focus_browser(proc_host);
                         }
                     }
                     4 => {
@@ -611,18 +672,10 @@ impl AladdinSession {
 
                     // Interações de corpo da janela do sistema
                     if win.id == 1 {
-                        // Terminal: botão + Executar ola-mundo
+                        // Terminal: botão + Executar Jinn Browser
                         let btn_y = win.y + win.height - 34;
                         if mx >= win.x + 8 && mx <= win.x + 228 && my >= btn_y && my <= btn_y + 24 {
-                            if let Ok(pid) = proc_host.spawn_app("/disk/browser.elf").or_else(|_| proc_host.spawn_app("/disk/ola.elf")) {
-                                self.spawn_count += 1;
-                                self.term.push_line("Spawned Jinn Browser via Terminal!", COLOR_EMERALD);
-                                let mut p_buf = [0u8; 16];
-                                let p_len = crate::compositor::format_num(pid, &mut p_buf);
-                                if let Ok(pid_str) = core::str::from_utf8(&p_buf[..p_len]) {
-                                    self.term.push_line(pid_str, COLOR_CYAN);
-                                }
-                            }
+                            self.launch_or_focus_browser(proc_host);
                         }
                     } else if win.id == 3 {
                         // Gerenciador de Arquivos
@@ -727,6 +780,9 @@ impl AladdinSession {
                     return (false, None);
                 }
                 if client_close_force {
+                    if self.browser_win_id == Some(clicked_idx) {
+                        self.browser_win_id = None;
+                    }
                     self.wm.close_window(clicked_idx);
                     self.client_damaged = true;
                     return (false, None);
