@@ -126,6 +126,9 @@ impl AladdinSession {
             if !proc_host.is_process_alive(pid) {
                 self.browser_pid = None;
                 self.browser_win_id = None;
+            } else {
+                self.term.push_line("Jinn Browser ja ativo (processo em execucao)", COLOR_CYAN);
+                return;
             }
         }
 
