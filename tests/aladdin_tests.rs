@@ -1150,3 +1150,109 @@ fn test_browser_external_pid_registration_and_key_delivery() {
     session.handle_key(0x1B, &mut proc, &sys);
     assert_eq!(session.should_exit, true, "ESC deve sair para o console quando nenhuma janela cliente tem foco");
 }
+
+
+#[test]
+fn test_two_windows_input_focus_and_event_isolation() {
+    use aladdin::contracts::process::ProcessHost;
+    use aladdin::contracts::input::{EVENT_KEY_DOWN, EVENT_MOUSE_DOWN};
+    use aladdin::desktop::session::AladdinSession;
+
+    struct TestProc;
+    impl ProcessHost for TestProc {
+        fn spawn_app(&mut self, _path: &str) -> Result<usize, ()> { Ok(300) }
+        fn execute_command(&mut self, _cmd: &str, _cb: &mut dyn FnMut(&str, u32)) {}
+        fn is_process_alive(&self, _pid: usize) -> bool { true }
+    }
+
+    struct DummyVfs;
+    impl aladdin::contracts::vfs::VfsHost for DummyVfs {
+        fn readdir(&self, _path: &str, _cb: &mut dyn FnMut(&str, bool, bool, bool)) {}
+        fn read_file(&self, _path: &str, _dest: &mut [u8]) -> Result<usize, ()> { Ok(0) }
+        fn write_file(&self, _path: &str, _data: &[u8]) -> Result<(), ()> { Ok(()) }
+        fn remove_file(&self, _path: &str) -> Result<(), ()> { Ok(()) }
+    }
+
+    let mut session = AladdinSession::new();
+    let mut proc = TestProc;
+    let sys = MockSystem::new();
+    let vfs = DummyVfs;
+
+    // 1. Criar Janela A (Navegador, PID 300)
+    session.register_browser_pid(300);
+    let win_browser = session.create_client_window(300, "Jinn Browser v0.3.0", 300, 200)
+        .expect("Janela do navegador criada com sucesso");
+    assert_eq!(session.find_browser_window_id(), Some(win_browser));
+
+    // 2. Criar Janela B (Outra aplicacao / Editor, PID 400)
+    let win_editor = session.create_client_window(400, "Jinn Text Editor", 320, 220)
+        .expect("Janela do editor criada com sucesso");
+
+    // Como win_editor foi criada por ultimo, ela esta no topo do Z-order (tem o foco ativo)
+    assert_eq!(session.wm.top_window_id(), win_editor);
+
+    // 3. Digitar teclas quando o editor esta no topo:
+    // Os eventos de teclado devem ser entregues EXCLUSIVAMENTE ao Editor (PID 400),
+    // e o Navegador (PID 300) NUNCA deve receber esses eventos!
+    session.handle_key(b'A', &mut proc, &sys);
+    session.handle_key(b'B', &mut proc, &sys);
+
+    // O editor deve conter os 2 eventos
+    let ev1 = session.poll_client_event(400, win_editor).expect("poll editor ok").expect("ev1");
+    assert_eq!(ev1.event_type, EVENT_KEY_DOWN);
+    assert_eq!(ev1.button_or_key, b'A' as u32);
+
+    let ev2 = session.poll_client_event(400, win_editor).expect("poll editor ok").expect("ev2");
+    assert_eq!(ev2.event_type, EVENT_KEY_DOWN);
+    assert_eq!(ev2.button_or_key, b'B' as u32);
+
+    // Fila do navegador DEVE ESTAR RIGOROSAMENTE VAZIA!
+    let ev_browser = session.poll_client_event(300, win_browser).expect("poll browser ok");
+    assert!(ev_browser.is_none(), "Navegador nao deve receber eventos direcionados a outra aplicacao!");
+
+    // 4. Tentativa de violacao de isolamento: PID 300 tenta consultar a fila da janela do editor
+    let forbidden_poll = session.poll_client_event(300, win_editor);
+    assert_eq!(
+        forbidden_poll,
+        Err(aladdin::wm::WindowOpError::PermissionDenied),
+        "Processo nao autorizado nao pode ler eventos de janelas de terceiros"
+    );
+
+    // 5. Alternancia de Foco: Clicar na area da janela do Navegador para trazê-la para o topo
+    let (bx, by) = {
+        let w = session.wm.windows[win_browser].as_ref().unwrap();
+        (w.x + 10, w.y + 10)
+    };
+    session.handle_mouse(bx, by, 1, &sys, &vfs, &mut proc, 1024, 768);
+    session.handle_mouse(bx, by, 0, &sys, &vfs, &mut proc, 1024, 768);
+
+    // Agora o navegador deve estar no topo
+    assert_eq!(session.wm.top_window_id(), win_browser);
+
+    // 6. Digitar teclas com foco no Navegador: agora os eventos vao para o Navegador!
+    session.handle_key(b'z', &mut proc, &sys);
+
+    let ev_nav = session.poll_client_event(300, win_browser).expect("poll browser ok").expect("ev_nav");
+    assert_eq!(ev_nav.event_type, EVENT_KEY_DOWN);
+    assert_eq!(ev_nav.button_or_key, b'z' as u32);
+
+    // O editor agora NAO deve receber este evento
+    let ev_ed_empty = session.poll_client_event(400, win_editor).expect("poll editor ok");
+    assert!(ev_ed_empty.is_none(), "Editor nao deve receber eventos direcionados ao navegador!");
+
+    // 7. Fechamento de janela com eventos pendentes:
+    session.wm.push_client_event(win_editor, aladdin::contracts::input::ClientWindowEvent {
+        event_type: EVENT_MOUSE_DOWN,
+        win_id: win_editor as u32,
+        x: 10,
+        y: 10,
+        button_or_key: 1,
+        modifiers: 0,
+        timestamp: 100,
+    });
+    assert!(session.close_client_window(400, win_editor).is_ok());
+
+    // Janela fechada limpa sua fila e nao afeta o navegador
+    assert_eq!(session.poll_client_event(400, win_editor), Err(aladdin::wm::WindowOpError::NotFound));
+    assert!(session.wm.windows[win_browser].is_some());
+}
