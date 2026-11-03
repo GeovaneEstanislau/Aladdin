@@ -6,7 +6,7 @@ use crate::font::*;
 pub const MENU_X: usize = 8;
 pub const MENU_Y: usize = 28;
 pub const MENU_W: usize = 260;
-pub const MENU_H: usize = 244;
+pub const MENU_H: usize = 270;
 
 pub fn render_start_menu(
     buf: &mut [u32],
@@ -30,10 +30,11 @@ pub fn render_start_menu(
         "2. Terminal Interativo",
         "3. Arquivos /disk (FAT32)",
         "4. Jinn Browser (Web)",
-        "5. Sobre o Jinn OS",
-        "6. Ciclar Perfil JSA",
-        "7. Reiniciar Maquina",
-        "8. Sair para Shell (ESC)",
+        "5. Gerenciador de Discos",
+        "6. Sobre o Jinn OS",
+        "7. Ciclar Perfil JSA",
+        "8. Reiniciar Maquina",
+        "9. Sair para Shell (ESC)",
     ];
 
     for (idx, &item) in items.iter().enumerate() {

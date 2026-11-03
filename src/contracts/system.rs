@@ -1,4 +1,6 @@
-﻿//! Contrato de Telemetria e Servicos de Sistema
+//! Contrato de Telemetria e Servicos de Sistema
+
+use crate::contracts::storage::StorageHost;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JinnWallProfile {
@@ -50,4 +52,27 @@ pub trait SystemHost {
     fn set_jinnwall_profile(&self, profile: JinnWallProfile);
     fn toggle_jinnwall_profile(&self) -> JinnWallProfile;
     fn reboot(&self) -> !;
+
+    // Métodos opcionais de integração com o subsistema de armazenamento (StorageHost)
+    fn storage_disk_count(&self) -> usize {
+        crate::contracts::storage::DEFAULT_STORAGE_HOST.disk_count()
+    }
+    fn storage_get_disk(&self, index: usize) -> Option<crate::contracts::storage::DiskInfo> {
+        crate::contracts::storage::DEFAULT_STORAGE_HOST.get_disk(index)
+    }
+    fn storage_volume_count(&self) -> usize {
+        crate::contracts::storage::DEFAULT_STORAGE_HOST.volume_count()
+    }
+    fn storage_get_volume(&self, index: usize) -> Option<crate::contracts::storage::VolumeDisplayInfo> {
+        crate::contracts::storage::DEFAULT_STORAGE_HOST.get_volume(index)
+    }
+    fn storage_mount_volume(&self, _volume_id: usize, _mount_point: &str) -> Result<(), &'static str> {
+        Ok(())
+    }
+    fn storage_unmount_volume(&self, _volume_id: usize) -> Result<(), &'static str> {
+        Ok(())
+    }
+    fn storage_format_volume(&self, _volume_id: usize, _fs_type: &str) -> Result<(), &'static str> {
+        Ok(())
+    }
 }

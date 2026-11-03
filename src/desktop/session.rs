@@ -40,6 +40,7 @@ pub struct AladdinSession {
     pub monitor: SystemMonitorApp,
     pub about: AboutApp,
     pub settings: SettingsApp,
+    pub disks: DiskManagerApp,
     pub mode: CapabilityMode,
     pub start_menu_open: bool,
     pub should_exit: bool,
@@ -64,6 +65,7 @@ impl AladdinSession {
             monitor: SystemMonitorApp::new(),
             about: AboutApp::new(),
             settings: SettingsApp::new(),
+            disks: DiskManagerApp::new(),
             mode: CapabilityMode::Balanced,
             start_menu_open: false,
             should_exit: false,
@@ -239,8 +241,13 @@ impl AladdinSession {
         w4.is_open = false;
         self.wm.windows[4] = Some(w4);
 
+        // Janela 5: Gerenciador de Discos Aladdin (fechada)
+        let mut w5 = Window::new(5, "Aladdin Disk Manager — Discos e Volumes", 180, 130, 520, 310);
+        w5.is_open = false;
+        self.wm.windows[5] = Some(w5);
+
         // Terminal como janela inicial no topo do Z-order
-        self.wm.order = [0, 2, 3, 4, 5, 6, 7, 1];
+        self.wm.order = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 1];
     }
 
     pub fn erase_cursor(&mut self, buf: &mut [u32], screen_w: usize, screen_h: usize) -> Option<DirtyRect> {
@@ -359,6 +366,10 @@ impl AladdinSession {
                         2 => self.about.render(buf, screen_w, screen_h, win.x, win.y),
                         3 => self.files.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, sys.storage_profile_name()),
                         4 => self.settings.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, self.mode, sys),
+                        5 => {
+                            let storage_adapter = crate::contracts::storage::SystemHostStorageAdapter(sys);
+                            self.disks.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, &storage_adapter);
+                        }
                         _ => {}
                     }
                 }
@@ -502,12 +513,16 @@ impl AladdinSession {
                                 self.launch_or_focus_browser(proc_host);
                             }
                             4 => {
+                                if let Some(w) = self.wm.windows[5].as_mut() { w.is_open = true; w.is_minimized = false; }
+                                self.wm.bring_to_front(5);
+                            }
+                            5 => {
                                 if let Some(w) = self.wm.windows[2].as_mut() { w.is_open = true; w.is_minimized = false; }
                                 self.wm.bring_to_front(2);
                             }
-                            5 => sys.cycle_storage_profile(),
-                            6 => sys.reboot(),
-                            7 => self.should_exit = true,
+                            6 => sys.cycle_storage_profile(),
+                            7 => sys.reboot(),
+                            8 => self.should_exit = true,
                             _ => {}
                         }
                     }
@@ -560,6 +575,19 @@ impl AladdinSession {
                         }
                     }
                     3 => {
+                        // Slot 3: Discos (Win 5)
+                        if let Some(w) = self.wm.windows[5].as_mut() {
+                            if w.is_open && !w.is_minimized && top_id == 5 {
+                                w.is_minimized = true;
+                            } else {
+                                w.is_open = true;
+                                w.is_minimized = false;
+                                self.wm.bring_to_front(5);
+                            }
+                        }
+                    }
+                    4 => {
+                        // Slot 4: Browser
                         if let Some(c_id) = self.find_browser_window_id() {
                             if let Some(w) = self.wm.windows[c_id].as_mut() {
                                 if !w.is_minimized && top_id == c_id {
@@ -573,8 +601,8 @@ impl AladdinSession {
                             self.launch_or_focus_browser(proc_host);
                         }
                     }
-                    4 => {
-                        // Slot 4: Ajustes (Win 4)
+                    5 => {
+                        // Slot 5: Ajustes (Win 4)
                         if let Some(w) = self.wm.windows[4].as_mut() {
                             if w.is_open && !w.is_minimized && top_id == 4 {
                                 w.is_minimized = true;
@@ -585,8 +613,8 @@ impl AladdinSession {
                             }
                         }
                     }
-                    5 => {
-                        // Slot 5: Sobre (Win 2)
+                    6 => {
+                        // Slot 6: Sobre (Win 2)
                         if let Some(w) = self.wm.windows[2].as_mut() {
                             if w.is_open && !w.is_minimized && top_id == 2 {
                                 w.is_minimized = true;
@@ -770,6 +798,11 @@ impl AladdinSession {
                                 sys.reboot();
                             }
                         }
+                    } else if win.id == 5 {
+                        let rel_x = mx.saturating_sub(win.x);
+                        let rel_y = my.saturating_sub(win.y);
+                        let mut storage_adapter = crate::contracts::storage::SystemHostStorageAdapter(sys);
+                        self.disks.handle_click(rel_x, rel_y, win.width, win.height, &mut storage_adapter);
                     } }
 
                 if let Some(ev) = client_ev_to_push {

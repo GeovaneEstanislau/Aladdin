@@ -83,7 +83,7 @@ fn test_window_manager_z_order() {
     wm.windows[1] = Some(Window::new(1, "Win 1", 20, 20, 100, 100));
     wm.windows[2] = Some(Window::new(2, "Win 2", 30, 30, 100, 100));
     wm.windows[3] = Some(Window::new(3, "Win 3", 40, 40, 100, 100));
-    wm.order = [0, 1, 2, 3, 4, 5, 6, 7];
+    wm.order = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
     wm.bring_to_front(1);
     assert_eq!(wm.top_window_id(), 1);
@@ -1032,13 +1032,13 @@ fn test_browser_instance_identification_and_lifecycle() {
     assert_eq!(session.browser_pid, None);
     assert_eq!(session.browser_win_id, None);
 
-    // 2. Outra aplicação abre janela cliente (slot 5)
+    // 2. Outra aplicação abre janela cliente (slot 6, pois 0..5 são janelas do sistema)
     let foreign_pid = 42;
     let foreign_win_id = session.create_client_window(foreign_pid, "Editor de Texto", 300, 200)
         .expect("Janela de outra aplicacao criada");
-    assert_eq!(foreign_win_id, 5);
+    assert_eq!(foreign_win_id, 6);
 
-    // A janela 5 NÃO deve ser identificada como navegador!
+    // A janela 6 NÃO deve ser identificada como navegador!
     assert_eq!(session.find_browser_window_id(), None);
     assert_eq!(session.browser_pid, None);
     assert_eq!(session.browser_win_id, None);
@@ -1057,14 +1057,14 @@ fn test_browser_instance_identification_and_lifecycle() {
     assert_eq!(session.browser_pid, Some(105));
     assert_eq!(session.browser_win_id, None); // Ainda não criou janela
 
-    // 4. Processo do navegador cria sua janela
+    // 4. Processo do navegador cria sua janela (slot 8)
     let browser_win_id = session.create_client_window(105, "Jinn Browser v0.3.0", 300, 180)
         .expect("Janela do browser criada");
-    assert_eq!(browser_win_id, 7);
+    assert_eq!(browser_win_id, 8);
 
-    // Identificação explícita do navegador deve retornar o slot 6, e NÃO o slot 5
-    assert_eq!(session.find_browser_window_id(), Some(7));
-    assert_eq!(session.browser_win_id, Some(7));
+    // Identificação explícita do navegador deve retornar o slot 8, e NÃO o slot 6
+    assert_eq!(session.find_browser_window_id(), Some(8));
+    assert_eq!(session.browser_win_id, Some(8));
 
     // 5. Tentativa de novo lançamento não duplica o processo
     proc.spawned_path = None;
@@ -1072,20 +1072,20 @@ fn test_browser_instance_identification_and_lifecycle() {
     // NÃO deve ter chamado spawn_app novamente
     assert_eq!(proc.spawned_path, None);
     // Janela deve estar no topo
-    assert_eq!(session.wm.top_window_id(), 7);
+    assert_eq!(session.wm.top_window_id(), 8);
 
     // 6. Minimização e restauração
-    let w = session.wm.windows[7].as_mut().unwrap();
+    let w = session.wm.windows[8].as_mut().unwrap();
     w.is_minimized = true;
-    assert_eq!(session.find_browser_window_id(), Some(7));
+    assert_eq!(session.find_browser_window_id(), Some(8));
 
     session.launch_or_focus_browser(&mut proc);
-    let w_restored = session.wm.windows[7].as_ref().unwrap();
+    let w_restored = session.wm.windows[8].as_ref().unwrap();
     assert!(!w_restored.is_minimized);
     assert!(w_restored.is_open);
 
     // 7. Fechamento da janela do navegador
-    assert!(session.close_client_window(105, 7).is_ok());
+    assert!(session.close_client_window(105, 8).is_ok());
     assert_eq!(session.find_browser_window_id(), None);
     assert_eq!(session.browser_win_id, None);
 
@@ -1255,4 +1255,156 @@ fn test_two_windows_input_focus_and_event_isolation() {
     // Janela fechada limpa sua fila e nao afeta o navegador
     assert_eq!(session.poll_client_event(400, win_editor), Err(aladdin::wm::WindowOpError::NotFound));
     assert!(session.wm.windows[win_browser].is_some());
+}
+
+
+#[test]
+fn test_disk_manager_app_and_storage_contract() {
+    use aladdin::apps::DiskManagerApp;
+    use aladdin::contracts::storage::{StorageHost, DiskInfo, DiskBus, VolumeDisplayInfo};
+
+    struct MockStorage {
+        unmounted_ids: Vec<usize>,
+        formatted_ids: Vec<usize>,
+    }
+
+    impl StorageHost for MockStorage {
+        fn disk_count(&self) -> usize { 2 }
+        fn get_disk(&self, index: usize) -> Option<DiskInfo> {
+            if index == 0 {
+                let mut d = DiskInfo::empty();
+                let n = b"nvme0n1";
+                d.name[..n.len()].copy_from_slice(n);
+                d.name_len = n.len();
+                d.bus = DiskBus::NvmePci;
+                d.capacity_mb = 512;
+                d.is_system_disk = true;
+                Some(d)
+            } else if index == 1 {
+                let mut d = DiskInfo::empty();
+                let n = b"sata0";
+                d.name[..n.len()].copy_from_slice(n);
+                d.name_len = n.len();
+                d.bus = DiskBus::AhciSata;
+                d.capacity_mb = 1024;
+                d.is_system_disk = false;
+                Some(d)
+            } else {
+                None
+            }
+        }
+
+        fn volume_count(&self) -> usize { 2 }
+        fn get_volume(&self, index: usize) -> Option<VolumeDisplayInfo> {
+            if index == 0 {
+                let mut v = VolumeDisplayInfo::empty();
+                v.id = 0;
+                let l = b"ROOT";
+                v.label[..l.len()].copy_from_slice(l);
+                v.label_len = l.len();
+                let m = b"/";
+                v.mount_point[..m.len()].copy_from_slice(m);
+                v.mount_point_len = m.len();
+                v.total_mb = 256;
+                v.used_mb = 50;
+                v.free_mb = 206;
+                v.is_mounted = true;
+                v.is_root = true;
+                Some(v)
+            } else if index == 1 {
+                let mut v = VolumeDisplayInfo::empty();
+                v.id = 1;
+                let l = b"DATA";
+                v.label[..l.len()].copy_from_slice(l);
+                v.label_len = l.len();
+                let m = b"/data";
+                v.mount_point[..m.len()].copy_from_slice(m);
+                v.mount_point_len = m.len();
+                v.total_mb = 500;
+                v.used_mb = 100;
+                v.free_mb = 400;
+                v.is_mounted = true;
+                v.is_root = false;
+                Some(v)
+            } else {
+                None
+            }
+        }
+
+        fn mount_volume(&mut self, _volume_id: usize, _mount_point: &str) -> Result<(), &'static str> { Ok(()) }
+        fn unmount_volume(&mut self, volume_id: usize) -> Result<(), &'static str> {
+            if volume_id == 0 {
+                Err("EBUSY: Nao e permitido desmontar o volume raiz")
+            } else {
+                self.unmounted_ids.push(volume_id);
+                Ok(())
+            }
+        }
+        fn format_volume(&mut self, volume_id: usize, _fs: &str) -> Result<(), &'static str> {
+            if volume_id == 0 {
+                Err("EPERM: Nao e permitido formatar o volume raiz do sistema")
+            } else {
+                self.formatted_ids.push(volume_id);
+                Ok(())
+            }
+        }
+    }
+
+    let mut app = DiskManagerApp::new();
+    let mut storage = MockStorage {
+        unmounted_ids: Vec::new(),
+        formatted_ids: Vec::new(),
+    };
+
+    // 1. Testa render em buffer
+    let mut fb = vec![0u32; 1024 * 768];
+    app.render(&mut fb, 1024, 768, 100, 100, 520, 310, &storage);
+
+    // 2. Seleciona disco 1 (sata0)
+    // Coordenada Y relativa de seleção: 54 + (1 * 18) = 72
+    app.handle_click(50, 72, 520, 310, &mut storage);
+    assert_eq!(app.selected_disk, 1);
+
+    // 3. Seleciona volume 0 (root) e tenta desmontar
+    app.handle_click(50, 140, 520, 310, &mut storage);
+    assert_eq!(app.selected_volume, 0);
+
+    // Botão Desmontar: rel_x: 114..202, rel_y: 222..248
+    app.handle_click(150, 230, 520, 310, &mut storage);
+    assert!(app.status_is_error);
+    assert!(app.status_str().contains("raiz"));
+    assert!(storage.unmounted_ids.is_empty());
+
+    // 4. Seleciona volume 1 (data) e desmonta
+    app.handle_click(50, 163, 520, 310, &mut storage);
+    assert_eq!(app.selected_volume, 1);
+    app.handle_click(150, 230, 520, 310, &mut storage);
+    assert!(!app.status_is_error);
+    assert_eq!(storage.unmounted_ids, vec![1]);
+
+    // 5. Formatar: clica no botão Formatar (rel_x: 218..314, rel_y: 222..248)
+    app.handle_click(250, 230, 520, 310, &mut storage);
+    // Modal de confirmação DEVE estar aberto!
+    assert!(app.confirm_dialog_open);
+    assert_eq!(app.action_volume_id, Some(1));
+
+    // 5.1 Cancela formatação
+    // Botão Cancelar no modal: dx + 180 .. dx + 320, dy + 88 .. dy + 114
+    let dw = 360;
+    let dh = 130;
+    let dx = (520 / 2) - (dw / 2); // 260 - 180 = 80
+    let dy = (310 / 2) - (dh / 2); // 155 - 65 = 90
+    app.handle_click(dx + 200, dy + 95, 520, 310, &mut storage);
+    assert!(!app.confirm_dialog_open);
+    assert!(storage.formatted_ids.is_empty());
+    assert!(app.status_str().contains("cancelada"));
+
+    // 5.2 Abre novamente e confirma formatação
+    app.handle_click(250, 230, 520, 310, &mut storage);
+    assert!(app.confirm_dialog_open);
+    app.handle_click(dx + 50, dy + 95, 520, 310, &mut storage);
+    assert!(!app.confirm_dialog_open);
+    assert_eq!(storage.formatted_ids, vec![1]);
+    assert!(!app.status_is_error);
+    assert!(app.status_str().contains("sucesso"));
 }
