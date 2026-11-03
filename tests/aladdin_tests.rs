@@ -967,7 +967,7 @@ fn test_client_window_lifecycle_and_dispatch_in_session() {
     assert_eq!(ev_up.event_type, EVENT_MOUSE_UP);
 
     // 3. Pressiona tecla com janela cliente focada -> Gera EVENT_KEY_DOWN
-    session.handle_key(b'k', &mut proc, &sys);
+    session.handle_key(b'k', &mut proc, &sys, &vfs);
     let ev_key = session.poll_client_event(pid, win_id).expect("poll ok").expect("event key found");
     assert_eq!(ev_key.event_type, EVENT_KEY_DOWN);
     assert_eq!(ev_key.button_or_key, b'k' as u32);
@@ -1113,9 +1113,18 @@ fn test_browser_external_pid_registration_and_key_delivery() {
         fn is_process_alive(&self, _pid: usize) -> bool { true }
     }
 
+    struct DummyVfs;
+    impl aladdin::contracts::vfs::VfsHost for DummyVfs {
+        fn readdir(&self, _path: &str, _cb: &mut dyn FnMut(&str, bool, bool, bool)) {}
+        fn read_file(&self, _path: &str, _dest: &mut [u8]) -> Result<usize, ()> { Ok(0) }
+        fn write_file(&self, _path: &str, _data: &[u8]) -> Result<(), ()> { Ok(()) }
+        fn remove_file(&self, _path: &str) -> Result<(), ()> { Ok(()) }
+    }
+
     let mut session = AladdinSession::new();
     let mut proc = TestProc;
     let sys = MockSystem::new();
+    let vfs = DummyVfs;
 
     // 1. Registro de PID externo (iniciado via terminal ou shell)
     session.register_browser_pid(300);
@@ -1129,7 +1138,7 @@ fn test_browser_external_pid_registration_and_key_delivery() {
     assert_eq!(session.browser_win_id, Some(win_id));
 
     // 3. Entrega de tecla ESC para a janela cliente ativa sem derrubar a sessao do desktop
-    session.handle_key(0x1B, &mut proc, &sys);
+    session.handle_key(0x1B, &mut proc, &sys, &vfs);
     assert_eq!(session.should_exit, false, "ESC nao deve encerrar o desktop quando janela cliente tem foco");
 
     let ev = session.poll_client_event(300, win_id).expect("poll ok").expect("evento presente");
@@ -1137,7 +1146,7 @@ fn test_browser_external_pid_registration_and_key_delivery() {
     assert_eq!(ev.button_or_key, 0x1B);
 
     // 4. Entrega de caracteres ASCII imprimiveis
-    session.handle_key(b'x', &mut proc, &sys);
+    session.handle_key(b'x', &mut proc, &sys, &vfs);
     let ev_char = session.poll_client_event(300, win_id).expect("poll ok").expect("evento presente");
     assert_eq!(ev_char.event_type, aladdin::contracts::input::EVENT_KEY_DOWN);
     assert_eq!(ev_char.button_or_key, b'x' as u32);
@@ -1147,7 +1156,7 @@ fn test_browser_external_pid_registration_and_key_delivery() {
     assert_eq!(session.find_browser_window_id(), None);
 
     // Com foco no terminal, ESC deve sinalizar saida para o console
-    session.handle_key(0x1B, &mut proc, &sys);
+    session.handle_key(0x1B, &mut proc, &sys, &vfs);
     assert_eq!(session.should_exit, true, "ESC deve sair para o console quando nenhuma janela cliente tem foco");
 }
 
@@ -1194,8 +1203,8 @@ fn test_two_windows_input_focus_and_event_isolation() {
     // 3. Digitar teclas quando o editor esta no topo:
     // Os eventos de teclado devem ser entregues EXCLUSIVAMENTE ao Editor (PID 400),
     // e o Navegador (PID 300) NUNCA deve receber esses eventos!
-    session.handle_key(b'A', &mut proc, &sys);
-    session.handle_key(b'B', &mut proc, &sys);
+    session.handle_key(b'A', &mut proc, &sys, &vfs);
+    session.handle_key(b'B', &mut proc, &sys, &vfs);
 
     // O editor deve conter os 2 eventos
     let ev1 = session.poll_client_event(400, win_editor).expect("poll editor ok").expect("ev1");
@@ -1230,7 +1239,7 @@ fn test_two_windows_input_focus_and_event_isolation() {
     assert_eq!(session.wm.top_window_id(), win_browser);
 
     // 6. Digitar teclas com foco no Navegador: agora os eventos vao para o Navegador!
-    session.handle_key(b'z', &mut proc, &sys);
+    session.handle_key(b'z', &mut proc, &sys, &vfs);
 
     let ev_nav = session.poll_client_event(300, win_browser).expect("poll browser ok").expect("ev_nav");
     assert_eq!(ev_nav.event_type, EVENT_KEY_DOWN);
@@ -1538,4 +1547,174 @@ fn test_modern_window_chrome_and_dock_rendering() {
     // O dock deve desenhar borda e indicadores
     let cyan_found = buf.iter().any(|&p| p == COLOR_CYAN_NEON);
     assert!(cyan_found, "Dock deve conter indicadores e bordas luminescentes");
+}
+
+#[test]
+fn test_file_manager_volume_switching_and_read_only_protection() {
+    use aladdin::apps::files::FileManagerApp;
+    use aladdin::contracts::vfs::VfsHost;
+
+    struct TestVfs;
+    impl VfsHost for TestVfs {
+        fn readdir(&self, _path: &str, _cb: &mut dyn FnMut(&str, bool, bool, bool)) {}
+        fn read_file(&self, _path: &str, _dest: &mut [u8]) -> Result<usize, ()> { Ok(0) }
+        fn write_file(&self, _path: &str, _data: &[u8]) -> Result<(), ()> { Ok(()) }
+        fn remove_file(&self, _path: &str) -> Result<(), ()> { Ok(()) }
+    }
+
+    let mut fm = FileManagerApp::new();
+    let vfs = TestVfs;
+
+    // Inicia em /disk (FAT32, Leitura e Escrita)
+    assert_eq!(fm.active_volume, 0);
+    assert_eq!(fm.current_path_str(), "/disk");
+    assert!(!fm.is_read_only());
+
+    // Alterna para volume 1 (/ext2, Somente-leitura)
+    fm.select_volume(1, &vfs);
+    assert_eq!(fm.active_volume, 1);
+    assert_eq!(fm.current_path_str(), "/ext2");
+    assert!(fm.is_read_only());
+
+    // Tentativas de modificação em volume RO devem ser rejeitadas
+    assert!(fm.create_folder("NOVA_DIR", &vfs).is_err());
+    assert!(fm.create_file("NOVO_ARQ", &vfs).is_err());
+    assert!(fm.rename_selected("REN_DIR", &vfs).is_err());
+    assert!(fm.delete_selected(&vfs).is_err());
+    assert!(fm.status_str().contains("somente-leitura"));
+
+    // Retorna para volume 0 (/disk)
+    fm.select_volume(0, &vfs);
+    assert_eq!(fm.active_volume, 0);
+    assert_eq!(fm.current_path_str(), "/disk");
+    assert!(!fm.is_read_only());
+}
+
+#[test]
+fn test_file_manager_directory_navigation() {
+    use aladdin::apps::files::FileManagerApp;
+    use aladdin::contracts::vfs::VfsHost;
+
+    struct NavVfs;
+    impl VfsHost for NavVfs {
+        fn readdir(&self, _path: &str, _cb: &mut dyn FnMut(&str, bool, bool, bool)) {}
+        fn read_file(&self, _path: &str, _dest: &mut [u8]) -> Result<usize, ()> { Ok(0) }
+        fn write_file(&self, _path: &str, _data: &[u8]) -> Result<(), ()> { Ok(()) }
+        fn remove_file(&self, _path: &str) -> Result<(), ()> { Ok(()) }
+    }
+
+    let mut fm = FileManagerApp::new();
+    let vfs = NavVfs;
+
+    assert_eq!(fm.current_path_str(), "/disk");
+
+    // Navega para subdiretório
+    fm.navigate_into("DOCS", &vfs);
+    assert_eq!(fm.current_path_str(), "/disk/DOCS");
+
+    // Navega para subdiretório mais profundo
+    fm.navigate_into("TEXTS", &vfs);
+    assert_eq!(fm.current_path_str(), "/disk/DOCS/TEXTS");
+
+    // Sobe um nível
+    fm.navigate_up(&vfs);
+    assert_eq!(fm.current_path_str(), "/disk/DOCS");
+
+    // Sobe para a raiz
+    fm.navigate_up(&vfs);
+    assert_eq!(fm.current_path_str(), "/disk");
+
+    // Sobe além da raiz deve permanecer na raiz sem erro ou overflow
+    fm.navigate_up(&vfs);
+    assert_eq!(fm.current_path_str(), "/disk");
+}
+
+#[test]
+fn test_file_manager_crud_operations_and_dialog_lifecycle() {
+    use aladdin::apps::files::{FileManagerApp, FileDialogKind};
+    use aladdin::contracts::vfs::VfsHost;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static DIR_CREATED: AtomicBool = AtomicBool::new(false);
+    static FILE_CREATED: AtomicBool = AtomicBool::new(false);
+    static FILE_REMOVED: AtomicBool = AtomicBool::new(false);
+    static FILE_RENAMED: AtomicBool = AtomicBool::new(false);
+
+    struct CrudVfs;
+    impl VfsHost for CrudVfs {
+        fn readdir(&self, _path: &str, cb: &mut dyn FnMut(&str, bool, bool, bool)) {
+            cb("ARQUIVO.TXT", false, true, false);
+        }
+        fn read_file(&self, _path: &str, _dest: &mut [u8]) -> Result<usize, ()> { Ok(0) }
+        fn write_file(&self, _path: &str, _data: &[u8]) -> Result<(), ()> { Ok(()) }
+        fn create_dir(&self, path: &str) -> Result<(), ()> {
+            if path == "/disk/PASTA" {
+                DIR_CREATED.store(true, Ordering::SeqCst);
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
+        fn create_file(&self, path: &str) -> Result<(), ()> {
+            if path == "/disk/NOVO.TXT" {
+                FILE_CREATED.store(true, Ordering::SeqCst);
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
+        fn remove_file(&self, path: &str) -> Result<(), ()> {
+            if path == "/disk/ARQUIVO.TXT" {
+                FILE_REMOVED.store(true, Ordering::SeqCst);
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
+        fn rename_file(&self, old_path: &str, new_path: &str) -> Result<(), ()> {
+            if old_path == "/disk/ARQUIVO.TXT" && new_path == "/disk/RENAMED.TXT" {
+                FILE_RENAMED.store(true, Ordering::SeqCst);
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
+    }
+
+    let mut fm = FileManagerApp::new();
+    let vfs = CrudVfs;
+    fm.refresh_cache(&vfs);
+
+    // 1. Criar pasta
+    assert!(fm.create_folder("PASTA", &vfs).is_ok());
+    assert!(DIR_CREATED.load(Ordering::SeqCst));
+
+    // 2. Criar arquivo
+    assert!(fm.create_file("NOVO.TXT", &vfs).is_ok());
+    assert!(FILE_CREATED.load(Ordering::SeqCst));
+
+    // 3. Selecionar item
+    fm.selected_index = Some(0);
+
+    // 4. Renomear item
+    assert!(fm.rename_selected("RENAMED.TXT", &vfs).is_ok());
+    assert!(FILE_RENAMED.load(Ordering::SeqCst));
+
+    // Seleciona novamente para excluir (rename reseta selecao ao atualizar cache)
+    fm.selected_index = Some(0);
+
+    // 5. Excluir item
+    assert!(fm.delete_selected(&vfs).is_ok());
+    assert!(FILE_REMOVED.load(Ordering::SeqCst));
+
+    // 6. Testar Diálogos e Input
+    fm.open_dialog(FileDialogKind::NewFolder);
+    assert_eq!(fm.dialog_kind, FileDialogKind::NewFolder);
+    fm.handle_key(b'M', &vfs);
+    fm.handle_key(b'Y', &vfs);
+    assert_eq!(&fm.input_buffer[..fm.input_len], b"MY");
+    fm.handle_key(8, &vfs); // Backspace
+    assert_eq!(&fm.input_buffer[..fm.input_len], b"M");
+    fm.handle_key(0x1B, &vfs); // ESC cancela
+    assert_eq!(fm.dialog_kind, FileDialogKind::None);
 }

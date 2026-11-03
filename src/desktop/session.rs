@@ -232,7 +232,7 @@ impl AladdinSession {
         self.wm.windows[2] = Some(w2);
 
         // Janela 3: Gerenciador de Arquivos Aladdin (fechada)
-        let mut w3 = Window::new(3, "Aladdin Files - Volume /disk (FAT32)", 160, 190, 440, 240);
+        let mut w3 = Window::new(3, "Aladdin Files — Gerenciador de Arquivos", 140, 140, 540, 320);
         w3.is_open = false;
         self.wm.windows[3] = Some(w3);
 
@@ -364,7 +364,10 @@ impl AladdinSession {
                         0 => self.monitor.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, &stats),
                         1 => self.term.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, is_active, stats.current_tick, self.spawn_count),
                         2 => self.about.render(buf, screen_w, screen_h, win.x, win.y),
-                        3 => self.files.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, sys.storage_profile_name()),
+                        3 => {
+                            let storage_adapter = crate::contracts::storage::SystemHostStorageAdapter(sys);
+                            self.files.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, &storage_adapter);
+                        }
                         4 => self.settings.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, self.mode, sys),
                         5 => {
                             let storage_adapter = crate::contracts::storage::SystemHostStorageAdapter(sys);
@@ -704,65 +707,7 @@ impl AladdinSession {
                             self.launch_or_focus_browser(proc_host);
                         }
                     } else if win.id == 3 {
-                        // Gerenciador de Arquivos
-                        let tab_y = win.y + 48;
-                        if my >= tab_y && my <= tab_y + 18 {
-                            if mx >= win.x + 12 && mx <= win.x + 126 {
-                                self.files.active_volume = 0;
-                                self.files.close_preview();
-                                self.files.refresh_cache(vfs);
-                            }
-                            if mx >= win.x + 134 && mx <= win.x + 248 {
-                                self.files.active_volume = 1;
-                                self.files.close_preview();
-                                self.files.refresh_cache(vfs);
-                            }
-                        }
-
-                        if self.files.preview_active {
-                            let p_x = win.x + 12;
-                            let p_y = win.y + 70;
-                            let p_w = win.width - 24;
-                            let btn_c_x = p_x + p_w - 76 - 4;
-
-                            // Botão Fechar Preview
-                            if mx >= btn_c_x && mx <= btn_c_x + 76 && my >= p_y + 2 && my <= p_y + 18 {
-                                self.files.close_preview();
-                            }
-                        } else {
-                            // Botão [Atualizar]
-                            let files_box_x = win.x + 12;
-                            let files_box_y = win.y + 70;
-                            let files_box_w = win.width - 24;
-                            let btn_rf_x = files_box_x + files_box_w - 88 - 8;
-
-                            if mx >= btn_rf_x && mx <= btn_rf_x + 88 && my >= files_box_y + 6 && my <= files_box_y + 24 {
-                                self.files.refresh_cache(vfs);
-                            }
-
-                            // Botões de itens de arquivo
-                            for i in 0..self.files.file_cache_count.min(3) {
-                                let item_y = files_box_y + 32 + (i * 22);
-                                let btn_x = files_box_x + files_box_w - 64 - 8;
-                                let entry = self.files.file_cache[i];
-
-                                if mx >= btn_x && mx <= btn_x + 64 && my >= item_y - 1 && my <= item_y + 15 {
-                                    if let Ok(name_str) = core::str::from_utf8(&entry.name[..entry.name_len]) {
-                                        if entry.is_elf {
-                                            let mut path_buf = [0u8; 32];
-                                            let pfx = if self.files.active_volume == 1 { "/ext2/" } else { "/disk/" };
-                                            path_buf[..pfx.len()].copy_from_slice(pfx.as_bytes());
-                                            path_buf[pfx.len()..(pfx.len() + entry.name_len)].copy_from_slice(&entry.name[..entry.name_len]);
-                                            if let Ok(path_str) = core::str::from_utf8(&path_buf[..(pfx.len() + entry.name_len)]) {
-                                                let _ = proc_host.spawn_app(path_str);
-                                            }
-                                        } else if entry.is_txt {
-                                            self.files.open_preview(name_str, vfs);
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        self.files.handle_mouse_click(mx, my, win.x, win.y, win.width, win.height, vfs, proc_host);
                     } else if win.id == 4 {
                         // Ajustes e Configurações
                         let btn_y = win.y + 72;
@@ -824,7 +769,20 @@ impl AladdinSession {
         (dragging_any, drag_damage)
     }
 
-    pub fn handle_key(&mut self, ch: u8, proc_host: &mut dyn ProcessHost, sys: &dyn SystemHost) {
+    pub fn handle_key(
+        &mut self,
+        ch: u8,
+        proc_host: &mut dyn ProcessHost,
+        sys: &dyn SystemHost,
+        vfs: &dyn VfsHost,
+    ) {
+        // Se houver diálogo modal aberto no Gerenciador de Arquivos, consome o evento de teclado prioritariamente
+        if self.files.dialog_kind != crate::apps::files::FileDialogKind::None {
+            self.files.handle_key(ch, vfs);
+            self.client_damaged = true;
+            return;
+        }
+
         let top_idx = self.wm.top_window_id();
         if let Some(win) = self.wm.windows[top_idx].as_ref() {
             if win.owner_pid.is_some() && win.is_open && !win.is_minimized {
@@ -849,6 +807,9 @@ impl AladdinSession {
 
         if top_idx == 1 { // Terminal interativo
             self.term.handle_key(ch, proc_host);
+        } else if top_idx == 3 {
+            self.files.handle_key(ch, vfs);
+            self.client_damaged = true;
         }
     }
 
@@ -881,7 +842,7 @@ impl AladdinSession {
             // 1. Processa entrada do teclado
             let mut key_pressed = false;
             while let Some(ch) = poll_key() {
-                self.handle_key(ch, proc_host, sys);
+                self.handle_key(ch, proc_host, sys, vfs);
                 key_pressed = true;
                 if self.should_exit { break; }
             }
