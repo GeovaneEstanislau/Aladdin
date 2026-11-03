@@ -83,3 +83,22 @@ Utilizada para consulta dos volumes do sistema (`storage_volume_count` e `storag
 | **CRUD e Diálogos** | `aladdin_tests.rs` | Fluxo completo de criação, renomeação, exclusão e input | **Aprovado (100%)** |
 | **Live GUI no QEMU** | QEMU Live Test | Abertura da janela, renderização de breadcrumbs e itens reais | **Aprovado (Captura confirmada)** |
 | **Persistência Cold-Reboot**| `test_persistence.ps1`| Gravação em FAT32, flush físico e reinicialização a frio | **Aprovado (100%)** |
+
+---
+
+## 6. Matriz de Compatibilidade do Ecossistema
+
+| Recurso | Implementado | Testado | Validado |
+| :--- | :---: | :---: | :---: |
+| **IDE/ATA** | Sim | Sim | Sim |
+| **AHCI** | Parcial | Sim | Parcial |
+| **NVMe** | Parcial | Sim | Parcial |
+| **VirtIO-Blk** | Sim | Sim | Sim |
+| **MBR** | Sim | Sim | Sim |
+| **GPT** | Sim | Sim | Sim |
+| **FAT32** | Sim | Sim | Sim |
+| **Ext2** | Sim | Sim | Sim |
+| **VFS** | Sim | Sim | Sim |
+| **Ring 3 Storage API** | Sim | Sim | Sim |
+| **Aladdin File Manager** | Sim | Sim | Sim |
+

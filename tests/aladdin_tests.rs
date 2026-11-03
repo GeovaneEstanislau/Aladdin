@@ -1717,4 +1717,11 @@ fn test_file_manager_crud_operations_and_dialog_lifecycle() {
     assert_eq!(&fm.input_buffer[..fm.input_len], b"M");
     fm.handle_key(0x1B, &vfs); // ESC cancela
     assert_eq!(fm.dialog_kind, FileDialogKind::None);
+
+    // 7. Testar Diálogo de Propriedades
+    fm.selected_index = Some(0);
+    fm.open_dialog(FileDialogKind::Properties);
+    assert_eq!(fm.dialog_kind, FileDialogKind::Properties);
+    fm.handle_key(b'\n', &vfs); // Enter fecha o diálogo de propriedades
+    assert_eq!(fm.dialog_kind, FileDialogKind::None);
 }

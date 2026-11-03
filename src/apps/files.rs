@@ -21,6 +21,7 @@ pub enum FileDialogKind {
     NewFile,
     Rename,
     Preview,
+    Properties,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -483,7 +484,7 @@ impl FileManagerApp {
                         let _ = self.rename_selected(name, vfs);
                         self.close_dialog();
                     }
-                    FileDialogKind::Preview => {
+                    FileDialogKind::Preview | FileDialogKind::Properties => {
                         self.close_dialog();
                     }
                     FileDialogKind::None => {}
@@ -551,7 +552,7 @@ impl FileManagerApp {
                             let name = if in_len > 0 { core::str::from_utf8(&in_buf[..in_len]).unwrap_or("NOVO") } else { "NOVO" };
                             let _ = self.rename_selected(name, vfs);
                         }
-                        FileDialogKind::Preview => {}
+                        FileDialogKind::Preview | FileDialogKind::Properties => {}
                         FileDialogKind::None => {}
                     }
                     self.close_dialog();
@@ -648,6 +649,17 @@ impl FileManagerApp {
             if mx >= bx && mx <= bx + 74 {
                 self.refresh_cache(vfs);
                 self.set_status("Listagem de arquivos atualizada", false);
+                return true;
+            }
+            bx += 80;
+
+            // [Info]
+            if mx >= bx && mx <= bx + 50 {
+                if self.selected_index.is_some() {
+                    self.dialog_kind = FileDialogKind::Properties;
+                } else {
+                    self.set_status("Selecione um item para ver detalhes", true);
+                }
                 return true;
             }
         }
@@ -800,6 +812,13 @@ impl FileManagerApp {
         fill_rect(buf, screen_w, screen_h, bx, tb_y + 2, 74, 18, 0x001E_293B);
         draw_rect_outline(buf, screen_w, screen_h, bx, tb_y + 2, 74, 18, COLOR_BORDER);
         draw_string(buf, screen_w, screen_h, "Atualizar", bx + 6, tb_y + 4, COLOR_TEXT_PRI, Some(0x001E_293B));
+        bx += 80;
+
+        // Botão [Info] (Propriedades do item selecionado)
+        let fg_i = if has_sel { COLOR_CYAN } else { COLOR_TEXT_MUTED };
+        fill_rect(buf, screen_w, screen_h, bx, tb_y + 2, 50, 18, bg_c);
+        draw_rect_outline(buf, screen_w, screen_h, bx, tb_y + 2, 50, 18, COLOR_BORDER);
+        draw_string(buf, screen_w, screen_h, "Info", bx + 12, tb_y + 4, fg_i, Some(bg_c));
 
         // 3. Barra Lateral de Volumes e Locais (wx + 8 a wx + 124)
         let main_y = wy + 76;
@@ -948,6 +967,7 @@ impl FileManagerApp {
             FileDialogKind::NewFile => "Criar Novo Arquivo",
             FileDialogKind::Rename => "Renomear Item",
             FileDialogKind::Preview => "Quick Look — Visualizador VFS",
+            FileDialogKind::Properties => "Propriedades do Item",
             FileDialogKind::None => "",
         };
         draw_string(buf, screen_w, screen_h, title, dx + 8, dy + 4, COLOR_CYAN, Some(0x001E_293B));
@@ -1042,6 +1062,34 @@ impl FileManagerApp {
                         line_start = i + 1;
                     }
                 }
+
+                // [ Fechar ]
+                let fc_x = dx + (dw - 100) / 2;
+                fill_rect(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, 0x001E_293B);
+                draw_rect_outline(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, COLOR_BORDER);
+                draw_string(buf, screen_w, screen_h, "Fechar", fc_x + 28, btn_y + 3, COLOR_WHITE, Some(0x001E_293B));
+            }
+            FileDialogKind::Properties => {
+                let (name, is_dir, is_elf, is_txt) = if let Some(i) = self.selected_index {
+                    if i < self.file_cache_count {
+                        (self.file_cache[i].name_str(), self.file_cache[i].is_dir, self.file_cache[i].is_elf, self.file_cache[i].is_txt)
+                    } else {
+                        ("-", false, false, false)
+                    }
+                } else {
+                    ("-", false, false, false)
+                };
+
+                draw_string(buf, screen_w, screen_h, "Nome:", dx + 16, dy + 30, COLOR_TEXT_MUTED, Some(0x000F_172A));
+                draw_string(buf, screen_w, screen_h, name, dx + 70, dy + 30, COLOR_CYAN, Some(0x000F_172A));
+
+                let type_str = if is_dir { "Pasta de Arquivos" } else if is_elf { "Binario ELF Ring 3" } else if is_txt { "Documento de Texto" } else { "Arquivo de Dados" };
+                draw_string(buf, screen_w, screen_h, "Tipo:", dx + 16, dy + 48, COLOR_TEXT_MUTED, Some(0x000F_172A));
+                draw_string(buf, screen_w, screen_h, type_str, dx + 70, dy + 48, COLOR_TEXT_PRI, Some(0x000F_172A));
+
+                let mode_str = if self.is_read_only() { "Somente-Leitura (RO)" } else { "Leitura e Escrita (RW)" };
+                draw_string(buf, screen_w, screen_h, "Acesso:", dx + 16, dy + 66, COLOR_TEXT_MUTED, Some(0x000F_172A));
+                draw_string(buf, screen_w, screen_h, mode_str, dx + 70, dy + 66, COLOR_EMERALD, Some(0x000F_172A));
 
                 // [ Fechar ]
                 let fc_x = dx + (dw - 100) / 2;
