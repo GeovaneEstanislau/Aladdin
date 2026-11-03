@@ -318,8 +318,8 @@ impl AladdinSession {
         mouse_x: usize,
         mouse_y: usize,
     ) {
-        // 1. Fundo principal
-        fill_rect(buf, screen_w, screen_h, 0, 0, screen_w, screen_h, COLOR_BG);
+        // 1. Wallpaper procedural com gradiente profundo e grade geometrica
+        render_procedural_wallpaper(buf, screen_w, screen_h, self.mode);
 
         // 2. Wingpanel superior
         let stats = sys.stats();

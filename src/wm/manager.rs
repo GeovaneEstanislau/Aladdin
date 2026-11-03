@@ -283,6 +283,7 @@ impl WindowManager {
         if win.can_minimize {
             let btn_min_x = win.x + win.width.saturating_sub(64);
             fill_rect(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, COLOR_AMBER);
+            draw_rect_outline(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, 0x00D9_7706);
             draw_char(buf, screen_w, screen_h, b'-', btn_min_x + 4, btn_y, COLOR_WHITE, Some(COLOR_AMBER));
         }
 
@@ -290,12 +291,14 @@ impl WindowManager {
             let btn_max_x = win.x + win.width.saturating_sub(44);
             let max_char = if win.is_maximized { b'^' } else { b'+' };
             fill_rect(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, COLOR_EMERALD);
+            draw_rect_outline(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 0x0016_A34A);
             draw_char(buf, screen_w, screen_h, max_char, btn_max_x + 4, btn_y, COLOR_WHITE, Some(COLOR_EMERALD));
         }
 
         if win.can_close {
             let btn_close_x = win.x + win.width.saturating_sub(24);
             fill_rect(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, COLOR_RUBY);
+            draw_rect_outline(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, 0x00DC_2626);
             draw_char(buf, screen_w, screen_h, b'X', btn_close_x + 4, btn_y, COLOR_WHITE, Some(COLOR_RUBY));
         }
 

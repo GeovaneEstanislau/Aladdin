@@ -188,3 +188,74 @@ pub fn format_num(mut val: usize, buf: &mut [u8]) -> usize {
     }
     i
 }
+
+
+/// Desenha contêiner tipo 'Pill' com fundo e borda sutil (inspirado no Wingpanel do elementary OS)
+pub fn draw_pill(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    bg_color: u32,
+    border_color: u32,
+) {
+    fill_rect(buf, screen_w, screen_h, x, y, width, height, bg_color);
+    draw_rect_outline(buf, screen_w, screen_h, x, y, width, height, border_color);
+}
+
+/// Projeta sombra suave para elevação de janelas
+pub fn draw_drop_shadow(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    offset: usize,
+    shadow_color: u32,
+) {
+    fill_rect(buf, screen_w, screen_h, x + offset, y + offset, width, height, shadow_color);
+}
+
+/// Renderiza wallpaper procedural escuro de alta performance (zero alocações, zero flicker)
+pub fn render_procedural_wallpaper(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    mode: crate::contracts::system::CapabilityMode,
+) {
+    if screen_w == 0 || screen_h == 0 { return; }
+
+    for y in 0..screen_h {
+        let factor = (y * 256) / screen_h;
+        let r = 9 + ((10 * factor) / 256);
+        let g = 13 + ((14 * factor) / 256);
+        let b = 20 + ((23 * factor) / 256);
+        let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+
+        let row_start = y * screen_w;
+        for x in 0..screen_w {
+            buf[row_start + x] = row_color;
+        }
+
+        if mode != crate::contracts::system::CapabilityMode::Basic && y % 32 == 0 {
+            let line_color = row_color.saturating_add(0x0003_0406);
+            for x in 0..screen_w {
+                if x % 32 == 0 {
+                    let dot_color = if mode == crate::contracts::system::CapabilityMode::Advanced && (x + y) % 128 == 0 {
+                        super::color::COLOR_CYAN_NEON
+                    } else {
+                        super::color::COLOR_BORDER_SUBTLE
+                    };
+                    buf[row_start + x] = dot_color;
+                } else if mode == crate::contracts::system::CapabilityMode::Advanced && x % 4 == 0 {
+                    buf[row_start + x] = line_color;
+                }
+            }
+        }
+    }
+}
