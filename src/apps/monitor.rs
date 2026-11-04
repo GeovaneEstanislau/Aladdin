@@ -1,4 +1,4 @@
-﻿//! Aplicativo Monitor de Sistema e Telemetria
+//! Aplicativo Monitor de Sistema e Telemetria
 
 use crate::compositor::*;
 use crate::font::*;
@@ -49,19 +49,52 @@ impl SystemMonitorApp {
 
         draw_string(buf, screen_w, screen_h, "--- Rede e Seguranca (JinnWall) ---", win_x + 12, win_y + 152, COLOR_CYAN, Some(COLOR_CARD));
 
-        let ip0 = stats.net_ip[0] as usize;
-        let ip1 = stats.net_ip[1] as usize;
-        let ip2 = stats.net_ip[2] as usize;
-        let ip3 = stats.net_ip[3] as usize;
-
         let has_ip = stats.net_ip != [0, 0, 0, 0];
         if has_ip {
-            draw_label_and_num(buf, screen_w, screen_h, "Rede IP  : ", ip0, ".", win_x + 12, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
-            draw_label_and_num(buf, screen_w, screen_h, "", ip1, ".", win_x + 110, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
-            draw_label_and_num(buf, screen_w, screen_h, "", ip2, ".", win_x + 130, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
-            draw_label_and_num(buf, screen_w, screen_h, "", ip3, " (", win_x + 150, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
-            draw_string(buf, screen_w, screen_h, stats.net_adapter, win_x + 195, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
-            draw_string(buf, screen_w, screen_h, ")", win_x + 195 + stats.net_adapter.len() * 8, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
+            let mut line_buf = [0u8; 80];
+            let mut pos = 0;
+            let prefix = b"Rede IP  : ";
+            line_buf[pos..pos + prefix.len()].copy_from_slice(prefix);
+            pos += prefix.len();
+
+            for (idx, &octet) in stats.net_ip.iter().enumerate() {
+                if idx > 0 {
+                    line_buf[pos] = b'.';
+                    pos += 1;
+                }
+                if octet >= 100 {
+                    line_buf[pos] = b'0' + (octet / 100);
+                    pos += 1;
+                    line_buf[pos] = b'0' + ((octet / 10) % 10);
+                    pos += 1;
+                    line_buf[pos] = b'0' + (octet % 10);
+                    pos += 1;
+                } else if octet >= 10 {
+                    line_buf[pos] = b'0' + (octet / 10);
+                    pos += 1;
+                    line_buf[pos] = b'0' + (octet % 10);
+                    pos += 1;
+                } else {
+                    line_buf[pos] = b'0' + octet;
+                    pos += 1;
+                }
+            }
+
+            let mid = b" (";
+            line_buf[pos..pos + mid.len()].copy_from_slice(mid);
+            pos += mid.len();
+
+            let ad_bytes = stats.net_adapter.as_bytes();
+            let ad_len = ad_bytes.len().min(line_buf.len() - pos - 2);
+            line_buf[pos..pos + ad_len].copy_from_slice(&ad_bytes[..ad_len]);
+            pos += ad_len;
+
+            line_buf[pos] = b')';
+            pos += 1;
+
+            if let Ok(line_str) = core::str::from_utf8(&line_buf[..pos]) {
+                draw_string(buf, screen_w, screen_h, line_str, win_x + 12, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
+            }
         } else {
             draw_string(buf, screen_w, screen_h, "Rede IP  : Inativa / Desconectada", win_x + 12, win_y + 170, COLOR_TEXT_MUTED, Some(COLOR_CARD));
         }
