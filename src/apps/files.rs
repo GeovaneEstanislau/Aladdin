@@ -10,7 +10,8 @@ use crate::contracts::vfs::VfsHost;
 use crate::contracts::storage::StorageHost;
 use crate::contracts::process::ProcessHost;
 
-pub const MAX_FILES: usize = 16;
+pub const MAX_FILES: usize = 64;
+pub const ITEMS_PER_PAGE: usize = 8;
 pub const MAX_PATH_BUF: usize = 64;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -68,6 +69,7 @@ pub struct FileManagerApp {
     pub file_cache: [CachedFileEntry; MAX_FILES],
     pub file_cache_count: usize,
     pub file_cache_valid: bool,
+    pub current_page: usize,
     pub selected_index: Option<usize>,
     pub sort_order: FileSortOrder,
 
@@ -95,6 +97,7 @@ impl FileManagerApp {
             file_cache: [CachedFileEntry::empty(); MAX_FILES],
             file_cache_count: 0,
             file_cache_valid: false,
+            current_page: 0,
             selected_index: None,
             sort_order: FileSortOrder::NameAsc,
             dialog_kind: FileDialogKind::None,
@@ -140,6 +143,65 @@ impl FileManagerApp {
         }
     }
 
+    pub fn total_pages(&self) -> usize {
+        if self.file_cache_count == 0 {
+            1
+        } else {
+            (self.file_cache_count + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE
+        }
+    }
+
+    pub fn prev_page(&mut self) {
+        if self.current_page > 0 {
+            self.current_page -= 1;
+            self.selected_index = None;
+            self.set_status("Pagina anterior", false);
+        }
+    }
+
+    pub fn next_page(&mut self) {
+        if self.current_page + 1 < self.total_pages() {
+            self.current_page += 1;
+            self.selected_index = None;
+            self.set_status("Proxima pagina", false);
+        }
+    }
+
+    pub fn move_selected(&mut self, dest_dir: &str, vfs: &dyn VfsHost) -> Result<(), &'static str> {
+        if self.is_read_only() {
+            self.set_status("[Erro] Volume somente-leitura. Movimentacao negada.", true);
+            return Err("Volume somente-leitura");
+        }
+        let sel_idx = self.selected_index.ok_or("Nenhum arquivo selecionado")?;
+        if sel_idx >= self.file_cache_count {
+            return Err("Indice invalido");
+        }
+        let entry_name = self.file_cache[sel_idx].name_str();
+        let cur = self.current_path_str();
+
+        let mut old_buf = [0u8; MAX_PATH_BUF];
+        let mut olen = cur.len();
+        old_buf[..olen].copy_from_slice(cur.as_bytes());
+        if old_buf[olen - 1] != b'/' { old_buf[olen] = b'/'; olen += 1; }
+        old_buf[olen..olen + entry_name.len()].copy_from_slice(entry_name.as_bytes());
+        olen += entry_name.len();
+
+        let mut new_buf = [0u8; MAX_PATH_BUF];
+        let mut nlen = dest_dir.len();
+        new_buf[..nlen].copy_from_slice(dest_dir.as_bytes());
+        if new_buf[nlen - 1] != b'/' { new_buf[nlen] = b'/'; nlen += 1; }
+        new_buf[nlen..nlen + entry_name.len()].copy_from_slice(entry_name.as_bytes());
+        nlen += entry_name.len();
+
+        let old_p = core::str::from_utf8(&old_buf[..olen]).map_err(|_| "UTF-8")?;
+        let new_p = core::str::from_utf8(&new_buf[..nlen]).map_err(|_| "UTF-8")?;
+
+        vfs.rename_file(old_p, new_p).map_err(|_| "Falha ao mover arquivo")?;
+        self.refresh_cache(vfs);
+        self.set_status("Arquivo movido com sucesso", false);
+        Ok(())
+    }
+
     pub fn is_read_only(&self) -> bool {
         self.active_volume == 1 || self.current_path_str().starts_with("/ext2")
     }
@@ -147,6 +209,7 @@ impl FileManagerApp {
     pub fn refresh_cache(&mut self, vfs: &dyn VfsHost) {
         self.file_cache_count = 0;
         self.selected_index = None;
+        self.current_page = 0;
         let mut count = 0;
         let cache_ptr = self.file_cache.as_mut_ptr();
         let target = self.current_path_str();
@@ -490,6 +553,14 @@ impl FileManagerApp {
                     FileDialogKind::None => {}
                 }
             }
+            0x49 => {
+                // Page Up: Página anterior
+                self.prev_page();
+            }
+            0x51 => {
+                // Page Down: Próxima página
+                self.next_page();
+            }
             8 => {
                 // Backspace
                 if self.input_len > 0 {
@@ -688,10 +759,33 @@ impl FileManagerApp {
         // 4. Área de Listagem de Arquivos (wx + 130 a wx + ww - 10)
         let list_x = wx + 130;
         let list_w = ww.saturating_sub(140);
-        if mx >= list_x && mx <= list_x + list_w && my >= main_y && my <= wy + wh - 40 {
+        let main_h = wh.saturating_sub(116);
+        let pag_y = main_y + main_h.saturating_sub(22);
+
+        // Cliques na Barra de Paginação Dinâmica
+        if my >= pag_y && my <= pag_y + 20 && mx >= list_x && mx <= list_x + list_w {
+            let btn_w = 54;
+            // Botão [< Ant]
+            if mx >= list_x + 4 && mx <= list_x + 4 + btn_w {
+                self.prev_page();
+                return true;
+            }
+            // Botão [Prox >]
+            let next_x = list_x + list_w.saturating_sub(btn_w + 4);
+            if mx >= next_x && mx <= next_x + btn_w {
+                self.next_page();
+                return true;
+            }
+        }
+
+        if mx >= list_x && mx <= list_x + list_w && my >= main_y && my < pag_y {
             let row_h = 20;
-            for i in 0..self.file_cache_count {
-                let row_y = main_y + 4 + (i * row_h);
+            let start_idx = self.current_page * ITEMS_PER_PAGE;
+            let page_count = self.file_cache_count.saturating_sub(start_idx).min(ITEMS_PER_PAGE);
+
+            for r in 0..page_count {
+                let i = start_idx + r;
+                let row_y = main_y + 4 + (r * row_h);
                 if my >= row_y && my <= row_y + row_h {
                     if self.selected_index == Some(i) {
                         // Segundo clique na mesma entrada: Executa ação (Navega se pasta, Preview se txt, Spawn se ELF)
@@ -858,9 +952,13 @@ impl FileManagerApp {
             draw_string(buf, screen_w, screen_h, "(Diretorio vazio)", list_x + 20, main_y + 30, COLOR_TEXT_MUTED, Some(COLOR_CARD_ALT));
         } else {
             let row_h = 20;
-            for i in 0..self.file_cache_count.min(MAX_FILES) {
+            let start_idx = self.current_page * ITEMS_PER_PAGE;
+            let page_count = self.file_cache_count.saturating_sub(start_idx).min(ITEMS_PER_PAGE);
+
+            for r in 0..page_count {
+                let i = start_idx + r;
                 let entry = &self.file_cache[i];
-                let row_y = main_y + 4 + (i * row_h);
+                let row_y = main_y + 4 + (r * row_h);
                 let is_sel = self.selected_index == Some(i);
 
                 let r_bg = if is_sel { 0x001E_293B } else { COLOR_CARD_ALT };
@@ -893,6 +991,50 @@ impl FileManagerApp {
                 }
             }
         }
+
+        // Rodapé de Paginação Dinâmica na Área de Listagem
+        let pag_y = main_y + main_h.saturating_sub(22);
+        fill_rect(buf, screen_w, screen_h, list_x + 1, pag_y, list_w - 2, 21, 0x000F_172A);
+        draw_rect_outline(buf, screen_w, screen_h, list_x + 1, pag_y, list_w - 2, 21, COLOR_BORDER_SUBTLE);
+
+        let tot_pages = self.total_pages();
+        let cur_p = self.current_page + 1;
+        let btn_w = 54;
+
+        // [< Ant]
+        let can_prev = self.current_page > 0;
+        let prev_bg = if can_prev { 0x001E_293B } else { 0x000F_172A };
+        let prev_fg = if can_prev { COLOR_CYAN } else { COLOR_TEXT_MUTED };
+        fill_rect(buf, screen_w, screen_h, list_x + 4, pag_y + 2, btn_w, 17, prev_bg);
+        draw_string(buf, screen_w, screen_h, "< Ant", list_x + 10, pag_y + 3, prev_fg, Some(prev_bg));
+
+        // Texto Central: Pag X/Y (N itens)
+        let mut pag_str = [0u8; 32];
+        let mut plen = 0;
+        for b in b"Pag " { pag_str[plen] = *b; plen += 1; }
+        let mut nb = [0u8; 8];
+        let nl = format_num(cur_p, &mut nb);
+        for b in &nb[..nl] { pag_str[plen] = *b; plen += 1; }
+        pag_str[plen] = b'/'; plen += 1;
+        let nl2 = format_num(tot_pages, &mut nb);
+        for b in &nb[..nl2] { pag_str[plen] = *b; plen += 1; }
+        for b in b" (" { pag_str[plen] = *b; plen += 1; }
+        let nl3 = format_num(self.file_cache_count, &mut nb);
+        for b in &nb[..nl3] { pag_str[plen] = *b; plen += 1; }
+        for b in b" itens)" { pag_str[plen] = *b; plen += 1; }
+
+        if let Ok(s) = core::str::from_utf8(&pag_str[..plen]) {
+            let mid_x = list_x + (list_w.saturating_sub(plen * 8)) / 2;
+            draw_string(buf, screen_w, screen_h, s, mid_x, pag_y + 3, COLOR_TEXT_PRI, Some(0x000F_172A));
+        }
+
+        // [Prox >]
+        let can_next = self.current_page + 1 < tot_pages;
+        let next_bg = if can_next { 0x001E_293B } else { 0x000F_172A };
+        let next_fg = if can_next { COLOR_CYAN } else { COLOR_TEXT_MUTED };
+        let next_x = list_x + list_w.saturating_sub(btn_w + 4);
+        fill_rect(buf, screen_w, screen_h, next_x, pag_y + 2, btn_w, 17, next_bg);
+        draw_string(buf, screen_w, screen_h, "Prox >", next_x + 6, pag_y + 3, next_fg, Some(next_bg));
 
         // 5. Barra Inferior de Status e Capacidade do Volume (wy + wh - 34 a wy + wh - 4)
         let bar_y = wy + wh - 34;

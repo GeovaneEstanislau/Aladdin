@@ -26,6 +26,8 @@ pub struct SystemStats {
     pub total_ram_mb: usize,
     pub current_tick: u64,
     pub net_ip: [u8; 4],
+    pub net_adapter: &'static str,
+    pub net_state_desc: &'static str,
     pub jinnwall_active_conns: usize,
     pub jinnwall_drops: u64,
     pub jinnwall_inspected: u64,

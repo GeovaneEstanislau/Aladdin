@@ -482,6 +482,8 @@ impl aladdin::contracts::system::SystemHost for MockSystem {
             total_ram_mb: 512,
             current_tick: 4200,
             net_ip: [10, 0, 2, 15],
+            net_adapter: "VirtIO-Net",
+            net_state_desc: "Operacional",
             jinnwall_active_conns: 3,
             jinnwall_drops: 12,
             jinnwall_inspected: 150,
@@ -639,6 +641,8 @@ fn test_telemetry_consistency_and_zero_values() {
                 total_ram_mb: 512,
                 current_tick: 0,
                 net_ip: [0, 0, 0, 0],
+                net_adapter: "Nenhum",
+                net_state_desc: "Sem placa de rede",
                 jinnwall_active_conns: 0,
                 jinnwall_drops: 0,
                 jinnwall_inspected: 0,
@@ -722,6 +726,8 @@ fn test_system_stats_saturation_and_boundary_safety() {
                 total_ram_mb: usize::MAX,
                 current_tick: u64::MAX,
                 net_ip: [255, 255, 255, 255],
+                net_adapter: "VirtIO-Net",
+                net_state_desc: "Operacional",
                 jinnwall_active_conns: usize::MAX,
                 jinnwall_drops: u64::MAX,
                 jinnwall_inspected: u64::MAX,
@@ -904,6 +910,8 @@ fn test_client_window_lifecycle_and_dispatch_in_session() {
                 total_ram_mb: 512,
                 current_tick: 50,
                 net_ip: [10, 0, 2, 15],
+                net_adapter: "VirtIO-Net",
+                net_state_desc: "Operacional",
                 jinnwall_active_conns: 0,
                 jinnwall_drops: 0,
                 jinnwall_inspected: 0,
@@ -1724,4 +1732,197 @@ fn test_file_manager_crud_operations_and_dialog_lifecycle() {
     assert_eq!(fm.dialog_kind, FileDialogKind::Properties);
     fm.handle_key(b'\n', &vfs); // Enter fecha o diálogo de propriedades
     assert_eq!(fm.dialog_kind, FileDialogKind::None);
+}
+
+#[test]
+fn test_file_manager_pagination_and_large_directory_listing() {
+    use aladdin::apps::files::{FileManagerApp, MAX_FILES, ITEMS_PER_PAGE};
+    use aladdin::contracts::vfs::VfsHost;
+    use aladdin::contracts::process::ProcessHost;
+
+    struct LargeDirVfs;
+    impl VfsHost for LargeDirVfs {
+        fn readdir(&self, _path: &str, cb: &mut dyn FnMut(&str, bool, bool, bool)) {
+            let names = [
+                "FILE01.TXT", "FILE02.TXT", "FILE03.TXT", "FILE04.TXT", "FILE05.TXT",
+                "FILE06.TXT", "FILE07.TXT", "FILE08.TXT", "FILE09.TXT", "FILE10.TXT",
+                "FILE11.TXT", "FILE12.TXT", "FILE13.TXT", "FILE14.TXT", "FILE15.TXT",
+                "FILE16.TXT", "FILE17.TXT", "FILE18.TXT", "FILE19.TXT", "FILE20.TXT",
+                "FILE21.TXT", "FILE22.TXT", "FILE23.TXT", "FILE24.TXT", "FILE25.TXT",
+            ];
+            for name in &names {
+                cb(name, false, false, true);
+            }
+        }
+        fn read_file(&self, _path: &str, _buf: &mut [u8]) -> Result<usize, ()> { Ok(0) }
+        fn write_file(&self, _path: &str, _data: &[u8]) -> Result<(), ()> { Ok(()) }
+        fn remove_file(&self, _path: &str) -> Result<(), ()> { Ok(()) }
+    }
+
+    struct MockProc;
+    impl ProcessHost for MockProc {
+        fn execute_command(&mut self, _cmd: &str, _output: &mut dyn FnMut(&str, u32)) {}
+        fn is_process_alive(&self, _pid: usize) -> bool { false }
+        fn spawn_app(&mut self, _path: &str) -> Result<usize, ()> { Ok(1) }
+    }
+
+    let mut fm = FileManagerApp::new();
+    let vfs = LargeDirVfs;
+    let mut proc = MockProc;
+
+    // 1. Atualiza cache e valida superação do limite de 16 arquivos
+    fm.refresh_cache(&vfs);
+    assert_eq!(fm.file_cache_count, 25);
+    assert!(fm.file_cache_count > 16, "O gerenciador deve suportar mais de 16 arquivos");
+    assert_eq!(MAX_FILES, 64);
+    assert_eq!(ITEMS_PER_PAGE, 8);
+
+    // 2. Valida cálculo de páginas dinâmicas (25 itens com 8 por página = 4 páginas)
+    assert_eq!(fm.total_pages(), 4);
+    assert_eq!(fm.current_page, 0);
+
+    // 3. Navegação entre páginas via métodos
+    fm.next_page();
+    assert_eq!(fm.current_page, 1);
+    fm.next_page();
+    assert_eq!(fm.current_page, 2);
+    fm.next_page();
+    assert_eq!(fm.current_page, 3);
+    // Trava de saturação na última página
+    fm.next_page();
+    assert_eq!(fm.current_page, 3);
+
+    // Retorno de páginas
+    fm.prev_page();
+    assert_eq!(fm.current_page, 2);
+    fm.prev_page();
+    assert_eq!(fm.current_page, 1);
+    fm.prev_page();
+    assert_eq!(fm.current_page, 0);
+    // Trava de saturação na primeira página
+    fm.prev_page();
+    assert_eq!(fm.current_page, 0);
+
+    // 4. Teste de cliques na barra de paginação do rodapé
+    let wx: usize = 50;
+    let wy: usize = 50;
+    let ww: usize = 540;
+    let wh: usize = 320;
+    let list_x = wx + 130;
+    let list_w = ww.saturating_sub(140);
+    let main_y = wy + 78;
+    let main_h = wh.saturating_sub(116);
+    let pag_y = main_y + main_h.saturating_sub(22);
+
+    // Clique no botão [Prox >] na barra de paginação
+    let next_btn_x = list_x + list_w - 30;
+    let clicked_next = fm.handle_mouse_click(next_btn_x, pag_y + 10, wx, wy, ww, wh, &vfs, &mut proc);
+    assert!(clicked_next);
+    assert_eq!(fm.current_page, 1);
+
+    // Clique no primeiro item da página 1 (que deve corresponder ao índice 8: FILE09.TXT)
+    let row0_y = main_y + 10;
+    let clicked_item = fm.handle_mouse_click(list_x + 50, row0_y, wx, wy, ww, wh, &vfs, &mut proc);
+    assert!(clicked_item);
+    assert_eq!(fm.selected_index, Some(8));
+    assert_eq!(fm.file_cache[8].name_str(), "FILE09.TXT");
+
+    // Clique no botão [< Ant] na barra de paginação
+    let prev_btn_x = list_x + 20;
+    let clicked_prev = fm.handle_mouse_click(prev_btn_x, pag_y + 10, wx, wy, ww, wh, &vfs, &mut proc);
+    assert!(clicked_prev);
+    assert_eq!(fm.current_page, 0);
+}
+
+#[test]
+fn test_file_manager_move_operation() {
+    use aladdin::apps::files::FileManagerApp;
+    use aladdin::contracts::vfs::VfsHost;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static MOVED_CORRECTLY: AtomicBool = AtomicBool::new(false);
+
+    struct MoveVfs;
+    impl VfsHost for MoveVfs {
+        fn readdir(&self, _path: &str, cb: &mut dyn FnMut(&str, bool, bool, bool)) {
+            cb("DOC.TXT", false, false, true);
+        }
+        fn read_file(&self, _path: &str, _buf: &mut [u8]) -> Result<usize, ()> { Ok(0) }
+        fn write_file(&self, _path: &str, _data: &[u8]) -> Result<(), ()> { Ok(()) }
+        fn remove_file(&self, _path: &str) -> Result<(), ()> { Ok(()) }
+        fn rename_file(&self, old_path: &str, new_path: &str) -> Result<(), ()> {
+            if old_path == "/disk/DOC.TXT" && new_path == "/disk/BACKUP/DOC.TXT" {
+                MOVED_CORRECTLY.store(true, Ordering::SeqCst);
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
+    }
+
+    let mut fm = FileManagerApp::new();
+    let vfs = MoveVfs;
+    fm.refresh_cache(&vfs);
+
+    fm.selected_index = Some(0);
+    assert!(fm.move_selected("/disk/BACKUP", &vfs).is_ok());
+    assert!(MOVED_CORRECTLY.load(Ordering::SeqCst));
+}
+
+#[test]
+fn test_system_monitor_network_states_and_adapter_telemetry() {
+    use aladdin::contracts::system::{SystemHost, SystemStats, JinnWallProfile};
+    use aladdin::apps::monitor::SystemMonitorApp;
+
+    struct NetStateHost {
+        nic_name: &'static str,
+        state_desc: &'static str,
+        ip: [u8; 4],
+    }
+
+    impl SystemHost for NetStateHost {
+        fn stats(&self) -> SystemStats {
+            SystemStats {
+                uptime_secs: 100,
+                task_count: 4,
+                sched_ticks: 1000,
+                used_ram_mb: 32,
+                total_ram_mb: 512,
+                current_tick: 1000,
+                net_ip: self.ip,
+                net_adapter: self.nic_name,
+                net_state_desc: self.state_desc,
+                jinnwall_active_conns: 1,
+                jinnwall_drops: 0,
+                jinnwall_inspected: 10,
+                jinnwall_accepted: 10,
+                jinnwall_profile: JinnWallProfile::PublicSecure,
+            }
+        }
+        fn yield_cpu(&self) {}
+        fn storage_profile_name(&self) -> &'static str { "FAT32" }
+        fn cycle_storage_profile(&self) {}
+        fn jinnwall_profile(&self) -> JinnWallProfile { JinnWallProfile::PublicSecure }
+        fn set_jinnwall_profile(&self, _profile: JinnWallProfile) {}
+        fn toggle_jinnwall_profile(&self) -> JinnWallProfile { JinnWallProfile::PublicSecure }
+        fn reboot(&self) -> ! { loop {} }
+    }
+
+    let mut buf = vec![0u32; 800 * 600];
+
+    // Caso A: Operacional com Intel 82540EM (VirtualBox / Bare Metal)
+    let host_e1000 = NetStateHost {
+        nic_name: "Intel 82540EM",
+        state_desc: "Rede: Ativa e operacional",
+        ip: [192, 168, 1, 50],
+    };
+    SystemMonitorApp.render(&mut buf, 800, 600, 10, 10, 300, 300, &host_e1000.stats());
+
+    // Caso B: Interface desconectada / sem PCI
+    let host_none = NetStateHost {
+        nic_name: "Nenhum",
+        state_desc: "PCI: Sem placa de rede",
+        ip: [0, 0, 0, 0],
+    };
+    SystemMonitorApp.render(&mut buf, 800, 600, 10, 10, 300, 300, &host_none.stats());
 }

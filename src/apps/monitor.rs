@@ -53,17 +53,28 @@ impl SystemMonitorApp {
         let ip1 = stats.net_ip[1] as usize;
         let ip2 = stats.net_ip[2] as usize;
         let ip3 = stats.net_ip[3] as usize;
-        draw_label_and_num(buf, screen_w, screen_h, "Rede IP  : ", ip0, ".", win_x + 12, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
-        draw_label_and_num(buf, screen_w, screen_h, "", ip1, ".", win_x + 110, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
-        draw_label_and_num(buf, screen_w, screen_h, "", ip2, ".", win_x + 130, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
-        draw_label_and_num(buf, screen_w, screen_h, "", ip3, " (VirtIO)", win_x + 150, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
+
+        let has_ip = stats.net_ip != [0, 0, 0, 0];
+        if has_ip {
+            draw_label_and_num(buf, screen_w, screen_h, "Rede IP  : ", ip0, ".", win_x + 12, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
+            draw_label_and_num(buf, screen_w, screen_h, "", ip1, ".", win_x + 110, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
+            draw_label_and_num(buf, screen_w, screen_h, "", ip2, ".", win_x + 130, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
+            draw_label_and_num(buf, screen_w, screen_h, "", ip3, " (", win_x + 150, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
+            draw_string(buf, screen_w, screen_h, stats.net_adapter, win_x + 195, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
+            draw_string(buf, screen_w, screen_h, ")", win_x + 195 + stats.net_adapter.len() * 8, win_y + 170, COLOR_EMERALD, Some(COLOR_CARD));
+        } else {
+            draw_string(buf, screen_w, screen_h, "Rede IP  : Inativa / Desconectada", win_x + 12, win_y + 170, COLOR_TEXT_MUTED, Some(COLOR_CARD));
+        }
+
+        draw_string(buf, screen_w, screen_h, "Status   : ", win_x + 12, win_y + 188, COLOR_TEXT_PRI, Some(COLOR_CARD));
+        draw_string(buf, screen_w, screen_h, stats.net_state_desc, win_x + 100, win_y + 188, if has_ip { COLOR_CYAN } else { COLOR_AMBER }, Some(COLOR_CARD));
 
         let is_sec = stats.jinnwall_profile == JinnWallProfile::PublicSecure;
-        draw_string(buf, screen_w, screen_h, "Firewall : Perfil ", win_x + 12, win_y + 188, COLOR_TEXT_PRI, Some(COLOR_CARD));
-        draw_string(buf, screen_w, screen_h, stats.jinnwall_profile.name(), win_x + 140, win_y + 188, if is_sec { COLOR_EMERALD } else { COLOR_CYAN }, Some(COLOR_CARD));
+        draw_string(buf, screen_w, screen_h, "Firewall : Perfil ", win_x + 12, win_y + 206, COLOR_TEXT_PRI, Some(COLOR_CARD));
+        draw_string(buf, screen_w, screen_h, stats.jinnwall_profile.name(), win_x + 140, win_y + 206, if is_sec { COLOR_EMERALD } else { COLOR_CYAN }, Some(COLOR_CARD));
 
-        draw_label_and_num(buf, screen_w, screen_h, "Conntrack: ", stats.jinnwall_active_conns, " fluxos ativos", win_x + 12, win_y + 206, COLOR_CYAN, Some(COLOR_CARD));
-        draw_label_and_num(buf, screen_w, screen_h, "Defesas  : Bloqueios ", stats.jinnwall_drops as usize, " pacotes DROP", win_x + 12, win_y + 224, COLOR_PURPLE, Some(COLOR_CARD));
-        draw_string(buf, screen_w, screen_h, "Seguranca: Ring 0 (Kernel) / Ring 3 (User ELF64)", win_x + 12, win_y + 244, COLOR_TEXT_MUTED, Some(COLOR_CARD));
+        draw_label_and_num(buf, screen_w, screen_h, "Conntrack: ", stats.jinnwall_active_conns, " fluxos ativos", win_x + 12, win_y + 224, COLOR_CYAN, Some(COLOR_CARD));
+        draw_label_and_num(buf, screen_w, screen_h, "Defesas  : Bloqueios ", stats.jinnwall_drops as usize, " pacotes DROP", win_x + 12, win_y + 242, COLOR_PURPLE, Some(COLOR_CARD));
+        draw_string(buf, screen_w, screen_h, "Seguranca: Ring 0 (Kernel) / Ring 3 (User ELF64)", win_x + 12, win_y + 260, COLOR_TEXT_MUTED, Some(COLOR_CARD));
     }
 }
