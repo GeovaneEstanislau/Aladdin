@@ -22,11 +22,11 @@ pub fn render_dock(
     let top_idx = wm.top_window_id();
 
     // 1. Sombra suave de elevação (Drop Shadow)
-    draw_drop_shadow(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, 3, COLOR_SHADOW);
+    draw_drop_shadow_rounded(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, 12, 3, COLOR_SHADOW);
 
-    // 2. Superfície flutuante translúcida do Dock
-    fill_rect(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, COLOR_DOCK);
-    draw_rect_outline(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, COLOR_BORDER_ACT);
+    // 2. Superfície flutuante translúcida do Dock (Cápsula elegante R=12)
+    fill_rounded_rect(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, 12, COLOR_DOCK);
+    draw_rounded_outline(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, 12, COLOR_BORDER_ACT);
 
     let slots = [
         ("[#] Monitor", dock_x + 6, 0),
@@ -45,9 +45,9 @@ pub fn render_dock(
         let slot_bg = if is_hover { COLOR_SURFACE_HOVER } else { COLOR_DOCK };
         let slot_bd = if is_hover { COLOR_CYAN_NEON } else { COLOR_BORDER_SUBTLE };
 
-        fill_rect(buf, screen_w, screen_h, slot_x, dock_y + 4, 88, 34, slot_bg);
         if is_hover {
-            draw_rect_outline(buf, screen_w, screen_h, slot_x, dock_y + 4, 88, 34, slot_bd);
+            fill_rounded_rect(buf, screen_w, screen_h, slot_x, dock_y + 4, 88, 34, 6, slot_bg);
+            draw_rounded_outline(buf, screen_w, screen_h, slot_x, dock_y + 4, 88, 34, 6, slot_bd);
             let tip = match label {
                 "[#] Monitor" => "Monitor de Recursos",
                 "[>] Console" => "Terminal Shell Ring 3",
@@ -69,13 +69,13 @@ pub fn render_dock(
             if let Some(w) = wm.windows[win_id] {
                 if w.is_open && !w.is_minimized && top_idx == win_id {
                     // Janela com foco ativo: traço ciano luminescente
-                    fill_rect(buf, screen_w, screen_h, slot_x + 20, dock_y + 36, 48, 2, COLOR_CYAN_NEON);
+                    fill_rounded_rect(buf, screen_w, screen_h, slot_x + 20, dock_y + 36, 48, 2, 1, COLOR_CYAN_NEON);
                 } else if w.is_open && !w.is_minimized {
                     // Aberta em segundo plano: ponto indicador esmeralda
-                    fill_rect(buf, screen_w, screen_h, slot_x + 38, dock_y + 36, 12, 2, COLOR_EMERALD);
+                    fill_rounded_rect(buf, screen_w, screen_h, slot_x + 38, dock_y + 36, 12, 2, 1, COLOR_EMERALD);
                 } else if w.is_minimized {
                     // Minimizada: ponto indicador âmbar
-                    fill_rect(buf, screen_w, screen_h, slot_x + 38, dock_y + 36, 12, 2, COLOR_AMBER);
+                    fill_rounded_rect(buf, screen_w, screen_h, slot_x + 38, dock_y + 36, 12, 2, 1, COLOR_AMBER);
                 }
             }
         }
@@ -86,9 +86,9 @@ pub fn render_dock(
         let tip_w = tip_text.len() * 8 + 16;
         let tip_x = (slot_x + 44).saturating_sub(tip_w / 2);
         let tip_y = dock_y.saturating_sub(26);
-        draw_drop_shadow(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, 2, COLOR_SHADOW);
-        fill_rect(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, COLOR_SURFACE_L0);
-        draw_rect_outline(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, COLOR_CYAN_NEON);
+        draw_drop_shadow_rounded(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, 4, 2, COLOR_SHADOW);
+        fill_rounded_rect(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, 4, COLOR_SURFACE_L0);
+        draw_rounded_outline(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, 4, COLOR_CYAN_NEON);
         draw_string(buf, screen_w, screen_h, tip_text, tip_x + 8, tip_y + 4, COLOR_TEXT_PRI, Some(COLOR_SURFACE_L0));
     }
 }

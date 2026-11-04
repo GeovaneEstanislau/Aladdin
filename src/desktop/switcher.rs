@@ -56,28 +56,28 @@ impl AppSwitcherHUD {
         let hud_y = (screen_h / 2).saturating_sub(hud_h / 2);
 
         // 1. Sombra suave profunda (Elevação nível 3)
-        draw_drop_shadow(buf, screen_w, screen_h, hud_x, hud_y, hud_w, hud_h, 6, COLOR_SHADOW);
+        draw_drop_shadow_rounded(buf, screen_w, screen_h, hud_x, hud_y, hud_w, hud_h, 10, 6, COLOR_SHADOW);
 
-        // 2. Fundo acrílico translúcido
-        fill_rect(buf, screen_w, screen_h, hud_x, hud_y, hud_w, hud_h, COLOR_SURFACE_L1);
-        draw_rect_outline(buf, screen_w, screen_h, hud_x, hud_y, hud_w, hud_h, COLOR_CYAN_NEON);
+        // 2. Fundo acrílico translúcido com cantos arredondados (R=10)
+        fill_rounded_rect(buf, screen_w, screen_h, hud_x, hud_y, hud_w, hud_h, 10, COLOR_SURFACE_L1);
+        draw_rounded_outline(buf, screen_w, screen_h, hud_x, hud_y, hud_w, hud_h, 10, COLOR_CYAN_NEON);
 
         // 3. Bisel superior sutil (1px highlight acrílico)
-        if hud_w > 2 {
+        if hud_w > 16 {
             draw_line(
                 buf,
                 screen_w,
                 screen_h,
-                (hud_x + 1) as isize,
+                (hud_x + 8) as isize,
                 hud_y as isize,
-                (hud_x + hud_w - 1) as isize,
+                (hud_x + hud_w - 8) as isize,
                 hud_y as isize,
                 0x0047_5569,
             );
         }
 
         // 4. Cabeçalho elegante
-        fill_rect(buf, screen_w, screen_h, hud_x + 1, hud_y + 1, hud_w - 2, 28, COLOR_SURFACE_L0);
+        fill_rounded_top(buf, screen_w, screen_h, hud_x + 1, hud_y + 1, hud_w - 2, 28, 9, COLOR_SURFACE_L0);
         draw_char(buf, screen_w, screen_h, b'*', hud_x + 12, hud_y + 8, COLOR_CYAN_NEON, Some(COLOR_SURFACE_L0));
         draw_string(
             buf,
@@ -127,8 +127,8 @@ impl AppSwitcherHUD {
                 };
 
                 let item_w = hud_w - 20;
-                fill_rect(buf, screen_w, screen_h, hud_x + 10, item_y, item_w, ITEM_HEIGHT, row_bg);
-                draw_rect_outline(buf, screen_w, screen_h, hud_x + 10, item_y, item_w, ITEM_HEIGHT, row_bd);
+                fill_rounded_rect(buf, screen_w, screen_h, hud_x + 10, item_y, item_w, ITEM_HEIGHT, 6, row_bg);
+                draw_rounded_outline(buf, screen_w, screen_h, hud_x + 10, item_y, item_w, ITEM_HEIGHT, 6, row_bd);
 
                 // Ícone e acento de cor do aplicativo
                 let (glyph, badge_fg) = match win.id {
@@ -214,3 +214,4 @@ impl AppSwitcherHUD {
         SwitcherAction::None
     }
 }
+

@@ -14,6 +14,13 @@ pub const MAX_FILES: usize = 64;
 pub const ITEMS_PER_PAGE: usize = 8;
 pub const MAX_PATH_BUF: usize = 64;
 
+// Dimensões Canônicas Unificadas dos Diálogos Modais do File Manager
+pub const DIALOG_W: usize = 340;
+pub const DIALOG_H_NORMAL: usize = 120;
+pub const DIALOG_H_PREVIEW: usize = 180;
+pub const DIALOG_BTN_W: usize = 140;
+pub const DIALOG_BTN_H: usize = 22;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FileDialogKind {
     None,
@@ -141,6 +148,10 @@ impl FileManagerApp {
         } else {
             core::str::from_utf8(&self.status_message[..self.status_len]).unwrap_or("Pronto")
         }
+    }
+
+    pub fn is_status_error(&self) -> bool {
+        self.status_is_error
     }
 
     pub fn total_pages(&self) -> usize {
@@ -589,18 +600,18 @@ impl FileManagerApp {
     ) -> bool {
         // Se houver diálogo modal aberto, processa cliques nos botões do diálogo
         if self.dialog_kind != FileDialogKind::None {
-            let dw = 320;
-            let dh = 140;
+            let dw = DIALOG_W;
+            let dh = if self.dialog_kind == FileDialogKind::Preview { DIALOG_H_PREVIEW } else { DIALOG_H_NORMAL };
             let dx = wx + (ww.saturating_sub(dw)) / 2;
             let dy = wy + (wh.saturating_sub(dh)) / 2;
 
-            let btn_y = dy + dh - 32;
-            let b0_x = dx + 20;
-            let b0_w = 120;
-            let b1_x = dx + dw - 140;
-            let b1_w = 120;
+            let btn_y = dy + dh - 28;
+            let b0_x = dx + 16;
+            let b0_w = DIALOG_BTN_W;
+            let b1_x = dx + dw - 156;
+            let b1_w = DIALOG_BTN_W;
 
-            if my >= btn_y && my <= btn_y + 24 {
+            if my >= btn_y && my <= btn_y + DIALOG_BTN_H {
                 // Botão Primário do Diálogo (Confirmar / Criar / Renomear)
                 if mx >= b0_x && mx <= b0_x + b0_w {
                     let mut in_buf = [0u8; 32];
@@ -637,13 +648,14 @@ impl FileManagerApp {
                 }
             }
 
-            // Clique fora do diálogo ou no botão fechar superior
-            let close_x = dx + dw - 24;
-            if mx >= close_x && mx <= close_x + 18 && my >= dy + 6 && my <= dy + 22 {
+            // Clique no botão fechar superior direito [X]
+            let close_x = dx + dw - 28;
+            if mx >= close_x && mx <= close_x + 24 && my >= dy + 2 && my <= dy + 22 {
                 self.close_dialog();
                 return true;
             }
 
+            // Diálogo modal captura todos os cliques dentro de sua área para não vazar para o fundo
             return true;
         }
 
@@ -1092,17 +1104,18 @@ impl FileManagerApp {
         ww: usize,
         wh: usize,
     ) {
-        let dw = 340;
-        let dh = if self.dialog_kind == FileDialogKind::Preview { 180 } else { 120 };
+        let dw = DIALOG_W;
+        let dh = if self.dialog_kind == FileDialogKind::Preview { DIALOG_H_PREVIEW } else { DIALOG_H_NORMAL };
         let dx = wx + (ww.saturating_sub(dw)) / 2;
         let dy = wy + (wh.saturating_sub(dh)) / 2;
 
-        // Fundo do diálogo e borda acentuada
-        fill_rect(buf, screen_w, screen_h, dx, dy, dw, dh, 0x000F_172A);
-        draw_rect_outline(buf, screen_w, screen_h, dx, dy, dw, dh, COLOR_BORDER_ACT);
+        // Sombra de elevação e fundo do diálogo arredondado (R=6)
+        draw_drop_shadow_rounded(buf, screen_w, screen_h, dx, dy, dw, dh, 6, 4, COLOR_SHADOW);
+        fill_rounded_rect(buf, screen_w, screen_h, dx, dy, dw, dh, 6, 0x000F_172A);
+        draw_rounded_outline(buf, screen_w, screen_h, dx, dy, dw, dh, 6, COLOR_BORDER_ACT);
 
         // Barra superior do diálogo
-        fill_rect(buf, screen_w, screen_h, dx + 1, dy + 1, dw - 2, 22, 0x001E_293B);
+        fill_rounded_top(buf, screen_w, screen_h, dx + 1, dy + 1, dw - 2, 22, 5, 0x001E_293B);
         let title = match self.dialog_kind {
             FileDialogKind::ConfirmDelete => "Confirmar Exclusao",
             FileDialogKind::NewFolder => "Criar Nova Pasta",
@@ -1119,9 +1132,9 @@ impl FileManagerApp {
 
         let btn_y = dy + dh - 28;
         let b0_x = dx + 16;
-        let b0_w = 140;
+        let b0_w = DIALOG_BTN_W;
         let b1_x = dx + dw - 156;
-        let b1_w = 140;
+        let b1_w = DIALOG_BTN_W;
 
         match self.dialog_kind {
             FileDialogKind::ConfirmDelete => {
@@ -1133,13 +1146,13 @@ impl FileManagerApp {
                 draw_string(buf, screen_w, screen_h, name, dx + 16, dy + 56, COLOR_RUBY, Some(0x000F_172A));
 
                 // [ Sim, Excluir ]
-                fill_rect(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, 0x002D_1215);
-                draw_rect_outline(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, COLOR_RUBY);
+                fill_rounded_rect(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, 4, 0x002D_1215);
+                draw_rounded_outline(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, 4, COLOR_RUBY);
                 draw_string(buf, screen_w, screen_h, "Sim, Excluir", b0_x + 24, btn_y + 3, COLOR_RUBY, Some(0x002D_1215));
 
                 // [ Cancelar ]
-                fill_rect(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, 0x001E_293B);
-                draw_rect_outline(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, COLOR_BORDER);
+                fill_rounded_rect(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, 4, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, 4, COLOR_BORDER);
                 draw_string(buf, screen_w, screen_h, "Cancelar", b1_x + 36, btn_y + 3, COLOR_TEXT_PRI, Some(0x001E_293B));
             }
             FileDialogKind::NewFolder | FileDialogKind::NewFile | FileDialogKind::Rename => {
@@ -1151,10 +1164,10 @@ impl FileManagerApp {
                 };
                 draw_string(buf, screen_w, screen_h, prompt, dx + 16, dy + 32, COLOR_TEXT_PRI, Some(0x000F_172A));
 
-                // Campo de entrada de texto
+                // Campo de entrada de texto com cantos arredondados
                 let input_w = dw - 32;
-                fill_rect(buf, screen_w, screen_h, dx + 16, dy + 50, input_w, 22, 0x001E_293B);
-                draw_rect_outline(buf, screen_w, screen_h, dx + 16, dy + 50, input_w, 22, COLOR_BORDER_ACT);
+                fill_rounded_rect(buf, screen_w, screen_h, dx + 16, dy + 50, input_w, 22, 4, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, dx + 16, dy + 50, input_w, 22, 4, COLOR_BORDER_ACT);
 
                 let typed = core::str::from_utf8(&self.input_buffer[..self.input_len]).unwrap_or("");
                 draw_string(buf, screen_w, screen_h, typed, dx + 22, dy + 54, COLOR_WHITE, Some(0x001E_293B));
@@ -1166,13 +1179,13 @@ impl FileManagerApp {
                     FileDialogKind::Rename => "Renomear",
                     _ => "OK",
                 };
-                fill_rect(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, 0x0025_63EB);
-                draw_rect_outline(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, COLOR_CYAN);
+                fill_rounded_rect(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, 4, 0x0025_63EB);
+                draw_rounded_outline(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, 4, COLOR_CYAN);
                 draw_string(buf, screen_w, screen_h, confirm_text, b0_x + 28, btn_y + 3, COLOR_WHITE, Some(0x0025_63EB));
 
                 // [ Cancelar ]
-                fill_rect(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, 0x001E_293B);
-                draw_rect_outline(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, COLOR_BORDER);
+                fill_rounded_rect(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, 4, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, 4, COLOR_BORDER);
                 draw_string(buf, screen_w, screen_h, "Cancelar", b1_x + 36, btn_y + 3, COLOR_TEXT_PRI, Some(0x001E_293B));
             }
             FileDialogKind::Preview => {
@@ -1182,8 +1195,8 @@ impl FileManagerApp {
                 // Caixa de texto com conteúdo lido
                 let tb_w = dw - 32;
                 let tb_h = 88;
-                fill_rect(buf, screen_w, screen_h, dx + 16, dy + 48, tb_w, tb_h, 0x001E_293B);
-                draw_rect_outline(buf, screen_w, screen_h, dx + 16, dy + 48, tb_w, tb_h, COLOR_BORDER);
+                fill_rounded_rect(buf, screen_w, screen_h, dx + 16, dy + 48, tb_w, tb_h, 4, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, dx + 16, dy + 48, tb_w, tb_h, 4, COLOR_BORDER);
 
                 let c_len = self.preview_content_len.min(256);
                 let mut line_y = dy + 52;
@@ -1207,8 +1220,8 @@ impl FileManagerApp {
 
                 // [ Fechar ]
                 let fc_x = dx + (dw - 100) / 2;
-                fill_rect(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, 0x001E_293B);
-                draw_rect_outline(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, COLOR_BORDER);
+                fill_rounded_rect(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, 4, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, 4, COLOR_BORDER);
                 draw_string(buf, screen_w, screen_h, "Fechar", fc_x + 28, btn_y + 3, COLOR_WHITE, Some(0x001E_293B));
             }
             FileDialogKind::Properties => {
@@ -1235,8 +1248,8 @@ impl FileManagerApp {
 
                 // [ Fechar ]
                 let fc_x = dx + (dw - 100) / 2;
-                fill_rect(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, 0x001E_293B);
-                draw_rect_outline(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, COLOR_BORDER);
+                fill_rounded_rect(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, 4, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, 4, COLOR_BORDER);
                 draw_string(buf, screen_w, screen_h, "Fechar", fc_x + 28, btn_y + 3, COLOR_WHITE, Some(0x001E_293B));
             }
             FileDialogKind::None => {}

@@ -237,39 +237,53 @@ impl WindowManager {
         let title_color = if is_active { COLOR_TOPPANEL } else { 0x0011_1827 };
         let border_color = if is_active { COLOR_BORDER_ACT } else { COLOR_BORDER };
 
-        // Sombras projetadas conforme CapabilityMode
+        // Sombras projetadas curvas conforme CapabilityMode
         if mode == CapabilityMode::Advanced {
-            fill_rect(buf, screen_w, screen_h, win.x + 4, win.y + 4, win.width, win.height, 0x0005_0710);
-            fill_rect(buf, screen_w, screen_h, win.x + 2, win.y + 2, win.width, win.height, 0x000A_0F1D);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, 6, 4, 0x0005_0710);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, 6, 2, 0x000A_0F1D);
         } else if mode == CapabilityMode::Balanced && is_active {
-            fill_rect(buf, screen_w, screen_h, win.x + 3, win.y + 3, win.width, win.height, 0x000A_0F1D);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, 6, 3, 0x000A_0F1D);
         }
 
-        // Borda externa
-        draw_rect_outline(
+        // Corpo da janela com cantos inferiores arredondados (R=6)
+        fill_rounded_rect(
             buf,
             screen_w,
             screen_h,
-            win.x.saturating_sub(1),
-            win.y.saturating_sub(1),
-            win.width + 2,
-            win.height + 2,
+            win.x,
+            win.y,
+            win.width,
+            win.height,
+            6,
+            COLOR_CARD,
+        );
+
+        // Barra de título com cantos superiores arredondados (R=6)
+        fill_rounded_top(buf, screen_w, screen_h, win.x, win.y, win.width, TITLE_BAR_HEIGHT, 6, title_color);
+
+        // Borda externa arredondada de precisão
+        draw_rounded_outline(
+            buf,
+            screen_w,
+            screen_h,
+            win.x,
+            win.y,
+            win.width,
+            win.height,
+            6,
             border_color,
         );
 
-        // Barra de título
-        fill_rect(buf, screen_w, screen_h, win.x, win.y, win.width, TITLE_BAR_HEIGHT, title_color);
-
         // Bisel superior sutil (1px highlight para efeito acrílico moderno)
-        if win.width > 2 {
+        if win.width > 12 {
             let bevel_color = if is_active { 0x0047_5569 } else { 0x0024_3042 };
             draw_line(
                 buf,
                 screen_w,
                 screen_h,
-                (win.x + 1) as isize,
+                (win.x + 6) as isize,
                 win.y as isize,
-                (win.x + win.width.saturating_sub(1)) as isize,
+                (win.x + win.width.saturating_sub(6)) as isize,
                 win.y as isize,
                 bevel_color,
             );
@@ -309,41 +323,29 @@ impl WindowManager {
             draw_string(buf, screen_w, screen_h, win.title_str(), win.x + 10, win.y + 4, COLOR_TEXT_MUTED, Some(title_color));
         }
 
-        // Trio de botões semáforo (Traffic-Light / elementary OS)
+        // Trio de botões semáforo arredondados (Traffic-Light / elementary OS)
         let btn_y = win.y + 4;
 
         if win.can_minimize {
             let btn_min_x = win.x + win.width.saturating_sub(64);
-            fill_rect(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, COLOR_AMBER);
-            draw_rect_outline(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, 0x00D9_7706);
+            fill_rounded_rect(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, 4, COLOR_AMBER);
+            draw_rounded_outline(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, 4, 0x00D9_7706);
             draw_char(buf, screen_w, screen_h, b'-', btn_min_x + 4, btn_y, COLOR_WHITE, Some(COLOR_AMBER));
         }
 
         if win.can_maximize {
             let btn_max_x = win.x + win.width.saturating_sub(44);
             let max_char = if win.is_maximized || win.is_snapped_left || win.is_snapped_right { b'^' } else { b'+' };
-            fill_rect(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, COLOR_EMERALD);
-            draw_rect_outline(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 0x0016_A34A);
+            fill_rounded_rect(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 4, COLOR_EMERALD);
+            draw_rounded_outline(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 4, 0x0016_A34A);
             draw_char(buf, screen_w, screen_h, max_char, btn_max_x + 4, btn_y, COLOR_WHITE, Some(COLOR_EMERALD));
         }
 
         if win.can_close {
             let btn_close_x = win.x + win.width.saturating_sub(24);
-            fill_rect(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, COLOR_RUBY);
-            draw_rect_outline(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, 0x00DC_2626);
+            fill_rounded_rect(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, 4, COLOR_RUBY);
+            draw_rounded_outline(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, 4, 0x00DC_2626);
             draw_char(buf, screen_w, screen_h, b'X', btn_close_x + 4, btn_y, COLOR_WHITE, Some(COLOR_RUBY));
         }
-
-        // Corpo da janela
-        fill_rect(
-            buf,
-            screen_w,
-            screen_h,
-            win.x,
-            win.y + TITLE_BAR_HEIGHT + 1,
-            win.width,
-            win.height.saturating_sub(TITLE_BAR_HEIGHT + 1),
-            COLOR_CARD,
-        );
     }
 }

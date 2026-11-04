@@ -859,7 +859,19 @@ impl AladdinSession {
                             self.launch_or_focus_browser(proc_host);
                         }
                     } else if win.id == 3 {
-                        self.files.handle_mouse_click(mx, my, win.x, win.y, win.width, win.height, vfs, proc_host);
+                        let mut prev_buf = [0u8; 64];
+                        let prev_len = {
+                            let s = self.files.status_str();
+                            let l = s.len().min(64);
+                            prev_buf[..l].copy_from_slice(&s.as_bytes()[..l]);
+                            l
+                        };
+                        let handled = self.files.handle_mouse_click(mx, my, win.x, win.y, win.width, win.height, vfs, proc_host);
+                        let new_msg = self.files.status_str();
+                        if handled && new_msg.as_bytes() != &prev_buf[..prev_len] && new_msg != "Pronto" {
+                            let ac = if self.files.is_status_error() { COLOR_RUBY } else { COLOR_EMERALD };
+                            self.notifications.post(b'~', "Gerenciador de Arquivos", new_msg, ac, 250, sys.stats().current_tick);
+                        }
                     } else if win.id == 4 {
                         // Ajustes e Configurações
                         let btn_y = win.y + 72;

@@ -163,20 +163,20 @@ impl NotificationCenter {
             let is_hover = mouse_x >= toast_x && mouse_x < toast_x + TOAST_WIDTH
                 && mouse_y >= current_y && mouse_y < current_y + TOAST_HEIGHT;
 
-            // 1. Sombra suave de elevação
-            draw_drop_shadow(buf, screen_w, screen_h, toast_x, current_y, TOAST_WIDTH, TOAST_HEIGHT, 3, COLOR_SHADOW);
+            // 1. Sombra suave de elevação arredondada
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, toast_x, current_y, TOAST_WIDTH, TOAST_HEIGHT, 6, 3, COLOR_SHADOW);
 
-            // 2. Fundo acrílico escuro
+            // 2. Fundo acrílico escuro com cantos arredondados (R=6)
             let bg_color = if is_hover { COLOR_SURFACE_HOVER } else { COLOR_SURFACE_L1 };
-            fill_rect(buf, screen_w, screen_h, toast_x, current_y, TOAST_WIDTH, TOAST_HEIGHT, bg_color);
-            draw_rect_outline(buf, screen_w, screen_h, toast_x, current_y, TOAST_WIDTH, TOAST_HEIGHT, COLOR_BORDER);
+            fill_rounded_rect(buf, screen_w, screen_h, toast_x, current_y, TOAST_WIDTH, TOAST_HEIGHT, 6, bg_color);
+            draw_rounded_outline(buf, screen_w, screen_h, toast_x, current_y, TOAST_WIDTH, TOAST_HEIGHT, 6, COLOR_BORDER);
 
             // 3. Faixa de destaque lateral com cor de acento
-            fill_rect(buf, screen_w, screen_h, toast_x, current_y, 4, TOAST_HEIGHT, item.accent_color);
+            fill_rounded_rect(buf, screen_w, screen_h, toast_x, current_y, 4, TOAST_HEIGHT, 2, item.accent_color);
 
-            // 4. Ícone com moldura circular/quadrada
-            fill_rect(buf, screen_w, screen_h, toast_x + 10, current_y + 10, 24, 24, COLOR_SURFACE_L2);
-            draw_rect_outline(buf, screen_w, screen_h, toast_x + 10, current_y + 10, 24, 24, item.accent_color);
+            // 4. Ícone com moldura arredondada
+            fill_rounded_rect(buf, screen_w, screen_h, toast_x + 10, current_y + 10, 24, 24, 4, COLOR_SURFACE_L2);
+            draw_rounded_outline(buf, screen_w, screen_h, toast_x + 10, current_y + 10, 24, 24, 4, item.accent_color);
             draw_char(buf, screen_w, screen_h, item.icon_glyph, toast_x + 18, current_y + 14, item.accent_color, Some(COLOR_SURFACE_L2));
 
             // 5. Título e Mensagem

@@ -1732,6 +1732,46 @@ fn test_file_manager_crud_operations_and_dialog_lifecycle() {
     assert_eq!(fm.dialog_kind, FileDialogKind::Properties);
     fm.handle_key(b'\n', &vfs); // Enter fecha o diálogo de propriedades
     assert_eq!(fm.dialog_kind, FileDialogKind::None);
+
+    // 8. Testar Clique do Mouse no Botão Primário do Diálogo Modal (Criar Pasta e Criar Arquivo)
+    struct DummyProc;
+    impl aladdin::contracts::process::ProcessHost for DummyProc {
+        fn spawn_app(&mut self, _path: &str) -> Result<usize, ()> { Ok(1) }
+        fn execute_command(&mut self, _cmd: &str, _cb: &mut dyn FnMut(&str, u32)) {}
+    }
+    let mut proc = DummyProc;
+    let wx: usize = 50; let wy: usize = 50; let ww: usize = 600; let wh: usize = 400;
+
+    // A) Diálogo Criar Pasta via Mouse Click
+    fm.dialog_kind = FileDialogKind::NewFolder;
+    let def_folder = b"PASTA";
+    fm.input_buffer[..def_folder.len()].copy_from_slice(def_folder);
+    fm.input_len = def_folder.len();
+
+    DIR_CREATED.store(false, Ordering::SeqCst);
+    let dw = aladdin::apps::files::DIALOG_W;
+    let dh = aladdin::apps::files::DIALOG_H_NORMAL;
+    let dx = wx + (ww.saturating_sub(dw)) / 2;
+    let dy = wy + (wh.saturating_sub(dh)) / 2;
+    let click_btn_x = dx + 24; // Dentro de [dx+16, dx+156]
+    let click_btn_y = dy + dh - 16; // Dentro de [dy+dh-28, dy+dh-6]
+
+    let handled = fm.handle_mouse_click(click_btn_x, click_btn_y, wx, wy, ww, wh, &vfs, &mut proc);
+    assert!(handled, "Clique dentro do dialogo deve ser consumido");
+    assert!(DIR_CREATED.load(Ordering::SeqCst), "Clique no botao 'Criar Pasta' deve criar a pasta no VFS!");
+    assert_eq!(fm.dialog_kind, FileDialogKind::None, "Dialogo deve fechar apos criacao da pasta!");
+
+    // B) Diálogo Criar Arquivo via Mouse Click
+    fm.dialog_kind = FileDialogKind::NewFile;
+    let def_file = b"NOVO.TXT";
+    fm.input_buffer[..def_file.len()].copy_from_slice(def_file);
+    fm.input_len = def_file.len();
+
+    FILE_CREATED.store(false, Ordering::SeqCst);
+    let handled_file = fm.handle_mouse_click(click_btn_x, click_btn_y, wx, wy, ww, wh, &vfs, &mut proc);
+    assert!(handled_file, "Clique dentro do dialogo deve ser consumido");
+    assert!(FILE_CREATED.load(Ordering::SeqCst), "Clique no botao 'Criar Arquivo' deve criar o arquivo no VFS!");
+    assert_eq!(fm.dialog_kind, FileDialogKind::None, "Dialogo deve fechar apos criacao do arquivo!");
 }
 
 #[test]
