@@ -1926,3 +1926,277 @@ fn test_system_monitor_network_states_and_adapter_telemetry() {
     };
     SystemMonitorApp.render(&mut buf, 800, 600, 10, 10, 300, 300, &host_none.stats());
 }
+
+#[test]
+fn test_window_snapping_left_and_right() {
+    use aladdin::wm::Window;
+
+    let mut win = Window::new(0, "Snap Target", 150, 120, 400, 300);
+    assert!(!win.is_snapped_left);
+    assert!(!win.is_snapped_right);
+    assert!(!win.is_maximized);
+
+    // 1. Encaixe à Esquerda (Snap Left)
+    let dmg_left = win.snap_left(1024, 768, 26, 54);
+    assert!(win.is_snapped_left);
+    assert!(!win.is_snapped_right);
+    assert!(!win.is_maximized);
+    assert_eq!(win.x, 0);
+    assert_eq!(win.y, 27);
+    assert_eq!(win.width, 512);
+    assert_eq!(win.height, 678);
+    assert!(dmg_left.width >= 512);
+
+    // 2. Encaixe à Direita (Snap Right)
+    let dmg_right = win.snap_right(1024, 768, 26, 54);
+    assert!(!win.is_snapped_left);
+    assert!(win.is_snapped_right);
+    assert_eq!(win.x, 512);
+    assert_eq!(win.y, 27);
+    assert_eq!(win.width, 512);
+    assert_eq!(win.height, 678);
+    assert!(dmg_right.width >= 512);
+
+    // 3. Restauração (Restore Snap)
+    win.restore_snap();
+    assert!(!win.is_snapped_left);
+    assert!(!win.is_snapped_right);
+    assert_eq!(win.x, 150);
+    assert_eq!(win.y, 120);
+    assert_eq!(win.width, 400);
+    assert_eq!(win.height, 300);
+}
+
+#[test]
+fn test_toast_notifications_lifecycle_and_progress() {
+    use aladdin::desktop::notifications::{NotificationCenter, TOAST_WIDTH};
+    use aladdin::compositor::{COLOR_CYAN_NEON, COLOR_EMERALD, COLOR_RUBY};
+
+    let mut center = NotificationCenter::new();
+    assert_eq!(center.active_count(0), 0);
+
+    // 1. Posta 3 notificações
+    let id1 = center.post(b'*', "Notificacao 1", "Primeiro alerta", COLOR_CYAN_NEON, 100, 10);
+    let id2 = center.post(b'!', "Notificacao 2", "Segundo alerta", COLOR_EMERALD, 200, 10);
+    let id3 = center.post(b'X', "Notificacao 3", "Terceiro alerta", COLOR_RUBY, 300, 10);
+
+    assert_eq!(center.active_count(10), 3);
+    assert_eq!(id1, 1);
+    assert_eq!(id2, 2);
+    assert_eq!(id3, 3);
+
+    // 2. Expiração pelo tempo (no tick 120: id1 expirou pois 120 - 10 = 110 >= 100)
+    assert_eq!(center.active_count(120), 2);
+
+    // 3. Fechamento manual (dismiss)
+    center.dismiss(id2);
+    assert_eq!(center.active_count(120), 1);
+
+    // 4. Teste de clique (handle_click)
+    let screen_w = 1024;
+    let toast_x = screen_w - (TOAST_WIDTH + 12);
+    let click_toast = center.handle_click(toast_x + 20, 36, screen_w, 120);
+    assert!(click_toast, "Clique dentro da notificacao ativa deve descartá-la");
+    assert_eq!(center.active_count(120), 0);
+
+    // 5. Renderização em buffer
+    let mut buf = vec![0u32; 1024 * 768];
+    center.post(b'*', "Teste Render", "Mensagem de teste", COLOR_CYAN_NEON, 200, 0);
+    center.render(&mut buf, 1024, 768, 50, 0, 0);
+    let non_zero = buf.iter().filter(|&&p| p != 0).count();
+    assert!(non_zero > 1000, "Render de notificacao deve preencher buffer grafico");
+}
+
+#[test]
+fn test_quick_settings_popover_interactions() {
+    use aladdin::desktop::quick_settings::{QuickSettingsPopover, QuickSettingsAction};
+    use aladdin::contracts::system::{CapabilityMode, JinnWallProfile, SystemHost, SystemStats};
+
+    struct MockSys;
+    impl SystemHost for MockSys {
+        fn stats(&self) -> SystemStats {
+            SystemStats {
+                uptime_secs: 42,
+                task_count: 5,
+                sched_ticks: 4200,
+                used_ram_mb: 24,
+                total_ram_mb: 512,
+                current_tick: 4200,
+                net_ip: [192, 168, 1, 10],
+                net_adapter: "VirtIO-Net",
+                net_state_desc: "Ativo",
+                jinnwall_active_conns: 3,
+                jinnwall_drops: 0,
+                jinnwall_inspected: 100,
+                jinnwall_accepted: 100,
+                jinnwall_profile: JinnWallProfile::PublicSecure,
+            }
+        }
+        fn yield_cpu(&self) {}
+        fn storage_profile_name(&self) -> &'static str { "FAT32" }
+        fn cycle_storage_profile(&self) {}
+        fn jinnwall_profile(&self) -> JinnWallProfile { JinnWallProfile::PublicSecure }
+        fn set_jinnwall_profile(&self, _profile: JinnWallProfile) {}
+        fn toggle_jinnwall_profile(&self) -> JinnWallProfile { JinnWallProfile::PublicSecure }
+        fn reboot(&self) -> ! { loop {} }
+    }
+
+    let sys = MockSys;
+    let pop_x = 700;
+    let pop_y = 28;
+
+    // 1. Cliques nos modos visuais FX
+    // Eco
+    let act_eco = QuickSettingsPopover::handle_click(pop_x, pop_y, pop_x + 20, pop_y + 60);
+    assert_eq!(act_eco, QuickSettingsAction::SetMode(CapabilityMode::Basic));
+
+    // Equilibrado
+    let act_bal = QuickSettingsPopover::handle_click(pop_x, pop_y, pop_x + 110, pop_y + 60);
+    assert_eq!(act_bal, QuickSettingsAction::SetMode(CapabilityMode::Balanced));
+
+    // Glow
+    let act_glow = QuickSettingsPopover::handle_click(pop_x, pop_y, pop_x + 210, pop_y + 60);
+    assert_eq!(act_glow, QuickSettingsAction::SetMode(CapabilityMode::Advanced));
+
+    // 2. Alternar Firewall
+    let act_fw = QuickSettingsPopover::handle_click(pop_x, pop_y, pop_x + 40, pop_y + 175);
+    assert_eq!(act_fw, QuickSettingsAction::ToggleFirewall);
+
+    // 3. Ciclar Storage JSA
+    let act_jsa = QuickSettingsPopover::handle_click(pop_x, pop_y, pop_x + 180, pop_y + 175);
+    assert_eq!(act_jsa, QuickSettingsAction::CycleStorage);
+
+    // 4. Clique fora do popover retorna None
+    let act_out = QuickSettingsPopover::handle_click(pop_x, pop_y, 10, 10);
+    assert_eq!(act_out, QuickSettingsAction::None);
+
+    // 5. Renderização sem pânico
+    let mut buf = vec![0u32; 1024 * 768];
+    QuickSettingsPopover::render(&mut buf, 1024, 768, pop_x, pop_y, 750, 50, CapabilityMode::Balanced, &sys);
+    let filled = buf.iter().filter(|&&p| p != 0).count();
+    assert!(filled > 2000, "Popover deve renderizar card e controles");
+}
+
+#[test]
+fn test_app_switcher_hud_lifecycle_and_tab_navigation() {
+    use aladdin::desktop::session::AladdinSession;
+    use aladdin::contracts::system::{SystemHost, SystemStats, JinnWallProfile};
+    use aladdin::contracts::vfs::VfsHost;
+    use aladdin::contracts::process::ProcessHost;
+
+    struct DummySys;
+    impl SystemHost for DummySys {
+        fn stats(&self) -> SystemStats {
+            SystemStats {
+                uptime_secs: 10,
+                task_count: 2,
+                sched_ticks: 100,
+                used_ram_mb: 16,
+                total_ram_mb: 256,
+                current_tick: 100,
+                net_ip: [0, 0, 0, 0],
+                net_adapter: "None",
+                net_state_desc: "Down",
+                jinnwall_active_conns: 0,
+                jinnwall_drops: 0,
+                jinnwall_inspected: 0,
+                jinnwall_accepted: 0,
+                jinnwall_profile: JinnWallProfile::PublicSecure,
+            }
+        }
+        fn yield_cpu(&self) {}
+        fn storage_profile_name(&self) -> &'static str { "FAT32" }
+        fn cycle_storage_profile(&self) {}
+        fn jinnwall_profile(&self) -> JinnWallProfile { JinnWallProfile::PublicSecure }
+        fn set_jinnwall_profile(&self, _profile: JinnWallProfile) {}
+        fn toggle_jinnwall_profile(&self) -> JinnWallProfile { JinnWallProfile::PublicSecure }
+        fn reboot(&self) -> ! { loop {} }
+    }
+
+    struct DummyVfs;
+    impl VfsHost for DummyVfs {
+        fn readdir(&self, _path: &str, _cb: &mut dyn FnMut(&str, bool, bool, bool)) {}
+        fn read_file(&self, _path: &str, _buf: &mut [u8]) -> Result<usize, ()> { Ok(0) }
+        fn write_file(&self, _path: &str, _data: &[u8]) -> Result<(), ()> { Ok(()) }
+        fn remove_file(&self, _path: &str) -> Result<(), ()> { Ok(()) }
+    }
+
+    struct DummyProc;
+    impl ProcessHost for DummyProc {
+        fn execute_command(&mut self, _cmd: &str, _output: &mut dyn FnMut(&str, u32)) {}
+        fn is_process_alive(&self, _pid: usize) -> bool { false }
+        fn spawn_app(&mut self, _path: &str) -> Result<usize, ()> { Ok(1) }
+    }
+
+    let mut session = AladdinSession::new();
+    let sys = DummySys;
+    let vfs = DummyVfs;
+    let mut proc = DummyProc;
+
+    // Inicialmente fechado
+    assert!(!session.app_switcher_open);
+
+    // 1. Pressiona Tab (0x09): abre o switcher
+    session.handle_key(0x09, &mut proc, &sys, &vfs);
+    assert!(session.app_switcher_open);
+    assert_eq!(session.app_switcher_index, 1);
+
+    // 2. Pressiona Tab novamente: incrementa o índice para próxima janela
+    session.handle_key(0x09, &mut proc, &sys, &vfs);
+    assert!(session.app_switcher_open);
+    assert_eq!(session.app_switcher_index, 2);
+
+    // 3. Pressiona Enter ('\n'): confirma seleção e fecha o switcher
+    session.handle_key(b'\n', &mut proc, &sys, &vfs);
+    assert!(!session.app_switcher_open);
+
+    // 4. Reabre com Tab e fecha com Escape (0x1B)
+    session.handle_key(0x09, &mut proc, &sys, &vfs);
+    assert!(session.app_switcher_open);
+    session.handle_key(0x1B, &mut proc, &sys, &vfs);
+    assert!(!session.app_switcher_open);
+}
+
+#[test]
+fn test_dock_tooltips_and_window_state_indicators() {
+    use aladdin::wm::{Window, WindowManager};
+    use aladdin::desktop::dock::render_dock;
+    use aladdin::compositor::{COLOR_EMERALD, COLOR_AMBER, COLOR_CYAN_NEON};
+
+    let w = 1024;
+    let h = 768;
+    let mut buf = vec![0u32; w * h];
+    let mut wm = WindowManager::new();
+
+    // Janela 0 aberta em background (deve mostrar ponto esmeralda)
+    let mut win0 = Window::new(0, "Monitor", 50, 50, 300, 200);
+    win0.is_open = true;
+    win0.is_minimized = false;
+    wm.windows[0] = Some(win0);
+
+    // Janela 1 aberta e com foco (deve mostrar barra ciano)
+    let mut win1 = Window::new(1, "Terminal", 200, 200, 400, 300);
+    win1.is_open = true;
+    win1.is_minimized = false;
+    wm.windows[1] = Some(win1);
+
+    // Janela 3 minimizada (deve mostrar ponto âmbar)
+    let mut win3 = Window::new(3, "Arquivos", 100, 100, 300, 200);
+    win3.is_open = true;
+    win3.is_minimized = true;
+    wm.windows[3] = Some(win3);
+
+    wm.order = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 1]; // Win 1 no topo
+
+    // Renderiza Dock com o mouse sobre o primeiro slot (gera tooltip)
+    let dock_x = (w / 2) - (aladdin::desktop::dock::DOCK_WIDTH / 2);
+    render_dock(&mut buf, w, h, dock_x + 30, h - 30, &wm, None);
+
+    let has_cyan = buf.iter().any(|&p| p == COLOR_CYAN_NEON);
+    let has_emerald = buf.iter().any(|&p| p == COLOR_EMERALD);
+    let has_amber = buf.iter().any(|&p| p == COLOR_AMBER);
+
+    assert!(has_cyan, "Janela com foco ativo deve exibir indicador ciano no Dock");
+    assert!(has_emerald, "Janela em segundo plano deve exibir indicador esmeralda no Dock");
+    assert!(has_amber, "Janela minimizada deve exibir indicador âmbar no Dock");
+}

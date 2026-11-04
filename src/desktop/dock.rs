@@ -38,6 +38,8 @@ pub fn render_dock(
         ("[?] Sobre", dock_x + 570, 2),
     ];
 
+    let mut hovered_tip: Option<(&str, usize)> = None;
+
     for &(label, slot_x, win_id) in slots.iter() {
         let is_hover = mouse_x >= slot_x && mouse_x < slot_x + 90 && mouse_y >= dock_y && mouse_y < dock_y + DOCK_HEIGHT;
         let slot_bg = if is_hover { COLOR_SURFACE_HOVER } else { COLOR_DOCK };
@@ -46,6 +48,17 @@ pub fn render_dock(
         fill_rect(buf, screen_w, screen_h, slot_x, dock_y + 4, 88, 34, slot_bg);
         if is_hover {
             draw_rect_outline(buf, screen_w, screen_h, slot_x, dock_y + 4, 88, 34, slot_bd);
+            let tip = match label {
+                "[#] Monitor" => "Monitor de Recursos",
+                "[>] Console" => "Terminal Shell Ring 3",
+                "[~] Arquivos" => "Arquivos (FAT32 / Ext2)",
+                "[D] Discos" => "Gerenciador de Discos",
+                "[@] Browser" => "Jinn Web Browser",
+                "[%] Ajustes" => "Ajustes do Desktop",
+                "[?] Sobre" => "Sobre o Ecossistema",
+                _ => label,
+            };
+            hovered_tip = Some((tip, slot_x));
         }
 
         let text_color = if is_hover { COLOR_WHITE } else { COLOR_TEXT_PRI };
@@ -66,5 +79,16 @@ pub fn render_dock(
                 }
             }
         }
+    }
+
+    // Renderiza tooltip flutuante sobre o item sob o cursor
+    if let Some((tip_text, slot_x)) = hovered_tip {
+        let tip_w = tip_text.len() * 8 + 16;
+        let tip_x = (slot_x + 44).saturating_sub(tip_w / 2);
+        let tip_y = dock_y.saturating_sub(26);
+        draw_drop_shadow(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, 2, COLOR_SHADOW);
+        fill_rect(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, COLOR_SURFACE_L0);
+        draw_rect_outline(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, COLOR_CYAN_NEON);
+        draw_string(buf, screen_w, screen_h, tip_text, tip_x + 8, tip_y + 4, COLOR_TEXT_PRI, Some(COLOR_SURFACE_L0));
     }
 }

@@ -1,4 +1,4 @@
-﻿//! Estrutura e Comportamento de Janelas com Recorte de Superfície
+//! Estrutura e Comportamento de Janelas com Recorte de Superfície
 
 use crate::contracts::framebuffer::DirtyRect;
 use crate::compositor::ClipRect;
@@ -18,6 +18,8 @@ pub struct Window {
     pub is_open: bool,
     pub is_minimized: bool,
     pub is_maximized: bool,
+    pub is_snapped_left: bool,
+    pub is_snapped_right: bool,
     pub saved_x: usize,
     pub saved_y: usize,
     pub saved_width: usize,
@@ -54,6 +56,8 @@ impl Window {
             is_open: true,
             is_minimized: false,
             is_maximized: false,
+            is_snapped_left: false,
+            is_snapped_right: false,
             saved_x: x,
             saved_y: y,
             saved_width: width,
@@ -143,15 +147,17 @@ impl Window {
     pub fn toggle_maximize(&mut self, screen_w: usize, screen_h: usize, top_panel_h: usize, dock_h: usize) -> DirtyRect {
         if !self.can_maximize { return self.bounds(); }
         let old_rect = self.bounds();
-        if self.is_maximized {
+        if self.is_maximized || self.is_snapped_left || self.is_snapped_right {
             self.x = self.saved_x;
             self.y = self.saved_y;
             self.width = self.saved_width;
             self.height = self.saved_height;
             self.is_maximized = false;
+            self.is_snapped_left = false;
+            self.is_snapped_right = false;
         } else {
             self.saved_x = self.x;
-            self.saved_y = self.y;
+            self.saved_y = self.saved_y_or_current();
             self.saved_width = self.width;
             self.saved_height = self.height;
 
@@ -160,6 +166,67 @@ impl Window {
             self.width = screen_w;
             self.height = screen_h.saturating_sub(top_panel_h + dock_h + 10);
             self.is_maximized = true;
+            self.is_snapped_left = false;
+            self.is_snapped_right = false;
+        }
+        old_rect.union(&self.bounds())
+    }
+
+    fn saved_y_or_current(&self) -> usize {
+        if self.saved_y > 0 { self.saved_y } else { self.y }
+    }
+
+    pub fn snap_left(&mut self, screen_w: usize, screen_h: usize, top_panel_h: usize, dock_h: usize) -> DirtyRect {
+        if !self.can_maximize { return self.bounds(); }
+        let old_rect = self.bounds();
+        if !self.is_maximized && !self.is_snapped_left && !self.is_snapped_right {
+            self.saved_x = self.x;
+            self.saved_y = self.y;
+            self.saved_width = self.width;
+            self.saved_height = self.height;
+        }
+
+        self.x = 0;
+        self.y = top_panel_h + 1;
+        self.width = screen_w / 2;
+        self.height = screen_h.saturating_sub(top_panel_h + dock_h + 10);
+        self.is_snapped_left = true;
+        self.is_snapped_right = false;
+        self.is_maximized = false;
+        old_rect.union(&self.bounds())
+    }
+
+    pub fn snap_right(&mut self, screen_w: usize, screen_h: usize, top_panel_h: usize, dock_h: usize) -> DirtyRect {
+        if !self.can_maximize { return self.bounds(); }
+        let old_rect = self.bounds();
+        if !self.is_maximized && !self.is_snapped_left && !self.is_snapped_right {
+            self.saved_x = self.x;
+            self.saved_y = self.y;
+            self.saved_width = self.width;
+            self.saved_height = self.height;
+        }
+
+        let half_w = screen_w / 2;
+        self.x = half_w;
+        self.y = top_panel_h + 1;
+        self.width = screen_w.saturating_sub(half_w);
+        self.height = screen_h.saturating_sub(top_panel_h + dock_h + 10);
+        self.is_snapped_left = false;
+        self.is_snapped_right = true;
+        self.is_maximized = false;
+        old_rect.union(&self.bounds())
+    }
+
+    pub fn restore_snap(&mut self) -> DirtyRect {
+        let old_rect = self.bounds();
+        if self.is_snapped_left || self.is_snapped_right || self.is_maximized {
+            self.x = self.saved_x;
+            self.y = self.saved_y;
+            self.width = self.saved_width;
+            self.height = self.saved_height;
+            self.is_snapped_left = false;
+            self.is_snapped_right = false;
+            self.is_maximized = false;
         }
         old_rect.union(&self.bounds())
     }

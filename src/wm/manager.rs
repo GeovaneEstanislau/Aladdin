@@ -208,6 +208,23 @@ impl WindowManager {
         None
     }
 
+    pub fn render_snap_preview(
+        &self,
+        buf: &mut [u32],
+        screen_w: usize,
+        screen_h: usize,
+        snap_x: usize,
+        snap_y: usize,
+        snap_w: usize,
+        snap_h: usize,
+    ) {
+        if snap_w == 0 || snap_h == 0 { return; }
+        draw_rect_outline(buf, screen_w, screen_h, snap_x, snap_y, snap_w, snap_h, COLOR_CYAN_NEON);
+        if snap_w > 4 && snap_h > 4 {
+            draw_rect_outline(buf, screen_w, screen_h, snap_x + 1, snap_y + 1, snap_w - 2, snap_h - 2, COLOR_BORDER_ACT);
+        }
+    }
+
     pub fn render_window_chrome(
         &self,
         buf: &mut [u32],
@@ -242,6 +259,21 @@ impl WindowManager {
 
         // Barra de título
         fill_rect(buf, screen_w, screen_h, win.x, win.y, win.width, TITLE_BAR_HEIGHT, title_color);
+
+        // Bisel superior sutil (1px highlight para efeito acrílico moderno)
+        if win.width > 2 {
+            let bevel_color = if is_active { 0x0047_5569 } else { 0x0024_3042 };
+            draw_line(
+                buf,
+                screen_w,
+                screen_h,
+                (win.x + 1) as isize,
+                win.y as isize,
+                (win.x + win.width.saturating_sub(1)) as isize,
+                win.y as isize,
+                bevel_color,
+            );
+        }
 
         // Acento luminescente sob o título na janela ativa (Garuda Neon Dr460nized)
         if is_active {
@@ -289,7 +321,7 @@ impl WindowManager {
 
         if win.can_maximize {
             let btn_max_x = win.x + win.width.saturating_sub(44);
-            let max_char = if win.is_maximized { b'^' } else { b'+' };
+            let max_char = if win.is_maximized || win.is_snapped_left || win.is_snapped_right { b'^' } else { b'+' };
             fill_rect(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, COLOR_EMERALD);
             draw_rect_outline(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 0x0016_A34A);
             draw_char(buf, screen_w, screen_h, max_char, btn_max_x + 4, btn_y, COLOR_WHITE, Some(COLOR_EMERALD));

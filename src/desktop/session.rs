@@ -11,6 +11,9 @@ use crate::apps::*;
 use super::wingpanel::render_wingpanel;
 use super::dock::render_dock;
 use super::start_menu::*;
+use super::notifications::*;
+use super::quick_settings::*;
+use super::switcher::*;
 
 pub const CURSOR_W: usize = 11;
 pub const CURSOR_H: usize = 16;
@@ -43,6 +46,11 @@ pub struct AladdinSession {
     pub disks: DiskManagerApp,
     pub mode: CapabilityMode,
     pub start_menu_open: bool,
+    pub quick_settings_open: bool,
+    pub app_switcher_open: bool,
+    pub app_switcher_index: usize,
+    pub notifications: NotificationCenter,
+    pub active_snap_preview: Option<DirtyRect>,
     pub should_exit: bool,
     pub spawn_count: usize,
     pub prev_buttons: u8,
@@ -54,7 +62,6 @@ pub struct AladdinSession {
     pub browser_pid: Option<usize>,
     pub browser_win_id: Option<usize>,
 }
-
 
 impl AladdinSession {
     pub fn new() -> Self {
@@ -68,6 +75,11 @@ impl AladdinSession {
             disks: DiskManagerApp::new(),
             mode: CapabilityMode::Balanced,
             start_menu_open: false,
+            quick_settings_open: false,
+            app_switcher_open: false,
+            app_switcher_index: 0,
+            notifications: NotificationCenter::new(),
+            active_snap_preview: None,
             should_exit: false,
             spawn_count: 0,
             prev_buttons: 0,
@@ -82,6 +94,7 @@ impl AladdinSession {
 
         session.init_default_windows();
         session.term.init_defaults();
+        session.notifications.post(b'*', "Aladdin OS 7", "Sistema pronto e operacional", COLOR_CYAN_NEON, 350, 0);
         session
     }
 
@@ -121,6 +134,7 @@ impl AladdinSession {
             self.wm.bring_to_front(win_id);
             self.client_damaged = true;
             self.term.push_line("Jinn Browser ja ativo (foco restaurado)", COLOR_CYAN);
+            self.notifications.post(b'@', "Navegador", "Jinn Browser em primeiro plano", COLOR_CYAN_NEON, 200, 0);
             return;
         }
 
@@ -145,11 +159,13 @@ impl AladdinSession {
                 if let Ok(pid_str) = core::str::from_utf8(&p_buf[..p_len]) {
                     self.term.push_line(pid_str, COLOR_CYAN);
                 }
+                self.notifications.post(b'@', "Jinn Browser", "Processo Ring 3 iniciado", COLOR_EMERALD, 300, 0);
             }
             Err(()) => {
                 self.browser_pid = None;
                 self.browser_win_id = None;
                 self.term.push_line("Erro: falha ao carregar /disk/browser.elf", COLOR_RUBY);
+                self.notifications.post(b'!', "Falha ao Iniciar", "Arquivo /disk/browser.elf nao encontrado", COLOR_RUBY, 300, 0);
             }
         }
     }
@@ -227,7 +243,7 @@ impl AladdinSession {
         self.wm.windows[1] = Some(Window::new(1, "Terminal Interativo (Ring 3 Ready)", 470, 80, 460, 240));
 
         // Janela 2: Sobre o Jinn OS (fechada)
-        let mut w2 = Window::new(2, "Sobre o Jinn OS", 240, 330, 420, 200);
+        let mut w2 = Window::new(2, "Sobre o Jinn OS", 240, 330, 420, 208);
         w2.is_open = false;
         self.wm.windows[2] = Some(w2);
 
@@ -318,17 +334,22 @@ impl AladdinSession {
         mouse_x: usize,
         mouse_y: usize,
     ) {
-        // 1. Wallpaper procedural com gradiente profundo e grade geometrica
+        // 1. Wallpaper procedural com gradiente profundo e grade geométrica
         render_procedural_wallpaper(buf, screen_w, screen_h, self.mode);
 
-        // 2. Wingpanel superior
+        // 2. Guia de recorte / Snap Preview ativo (se arrastando janela para as bordas)
+        if let Some(ref snap) = self.active_snap_preview {
+            self.wm.render_snap_preview(buf, screen_w, screen_h, snap.x, snap.y, snap.width, snap.height);
+        }
+
+        // 3. Wingpanel superior
         let stats = sys.stats();
         render_wingpanel(buf, screen_w, screen_h, &stats, sys.storage_profile_name(), self.mode, self.start_menu_open);
 
-        // 3. Marca d'água elegante
+        // 4. Marca d'água elegante
         draw_string(buf, screen_w, screen_h, "Aladdin Desktop 7.0 | Jinn Microkernel x86_64", screen_w.saturating_sub(370), screen_h.saturating_sub(16), COLOR_BORDER, None);
 
-        // 4. Renderiza janelas em Z-order (do fundo para o topo)
+        // 5. Renderiza janelas em Z-order (do fundo para o topo)
         let top_idx = self.wm.top_window_id();
         for &win_idx in self.wm.order.iter() {
             if let Some(win) = self.wm.windows[win_idx] {
@@ -379,12 +400,27 @@ impl AladdinSession {
             }
         }
 
-        // 5. Plank Dock inferior
+        // 6. Plank Dock inferior
         render_dock(buf, screen_w, screen_h, mouse_x, mouse_y, &self.wm, self.find_browser_window_id());
 
-        // 6. Menu Iniciar popup (se ativo)
+        // 7. Menu Iniciar popup (se ativo)
         if self.start_menu_open {
             render_start_menu(buf, screen_w, screen_h, mouse_x, mouse_y);
+        }
+
+        // 8. Centro de Controle Rápido (se ativo)
+        if self.quick_settings_open {
+            let pop_x = screen_w.saturating_sub(QUICK_SETTINGS_W + 12);
+            let pop_y = 28;
+            QuickSettingsPopover::render(buf, screen_w, screen_h, pop_x, pop_y, mouse_x, mouse_y, self.mode, sys);
+        }
+
+        // 9. Notificações Toast do Sistema
+        self.notifications.render(buf, screen_w, screen_h, stats.current_tick, mouse_x, mouse_y);
+
+        // 10. Alternador de Tarefas / App Switcher HUD (se ativo)
+        if self.app_switcher_open {
+            AppSwitcherHUD::render(buf, screen_w, screen_h, mouse_x, mouse_y, &self.wm, self.app_switcher_index);
         }
     }
 
@@ -403,13 +439,29 @@ impl AladdinSession {
         let prev_left_clicked = (self.prev_buttons & 1) != 0;
         self.prev_buttons = buttons;
 
-        // Se soltou o botão esquerdo, encerra arrasto
+        // Se soltou o botão esquerdo, encerra arrasto e avalia encaixe (Window Snapping)
         if !left_clicked {
             for win_opt in self.wm.windows.iter_mut() {
                 if let Some(win) = win_opt {
-                    win.is_dragging = false;
+                    if win.is_dragging {
+                        win.is_dragging = false;
+
+                        // Aplica o encaixe (Snap) se foi solto próximo aos limites da tela
+                        if mx <= 16 {
+                            win.snap_left(screen_w, screen_h, 26, 54);
+                            self.notifications.post(b'<', "Janela Encaixada", "Ajustada à metade esquerda da tela", COLOR_CYAN_NEON, 200, sys.stats().current_tick);
+                        } else if mx >= screen_w.saturating_sub(16) {
+                            win.snap_right(screen_w, screen_h, 26, 54);
+                            self.notifications.post(b'>', "Janela Encaixada", "Ajustada à metade direita da tela", COLOR_CYAN_NEON, 200, sys.stats().current_tick);
+                        } else if my <= 32 {
+                            win.toggle_maximize(screen_w, screen_h, 26, 54);
+                            self.notifications.post(b'^', "Janela Maximizada", "Expandida para preencher a tela", COLOR_EMERALD, 200, sys.stats().current_tick);
+                        }
+                    }
                 }
             }
+            self.active_snap_preview = None;
+
             if prev_left_clicked {
                 if let Some(win_idx) = self.wm.find_window_at(mx, my) {
                     if let Some(win) = self.wm.windows[win_idx].as_ref() {
@@ -446,6 +498,23 @@ impl AladdinSession {
                     win.y = new_y.min((screen_h.saturating_sub(54)).saturating_sub(win.height));
                     dragging_any = true;
 
+                    // Restaura dimensões padrão se o usuário puxar uma janela maximizada/encaixada
+                    if (win.is_maximized || win.is_snapped_left || win.is_snapped_right) && my > 38 && mx > 20 && mx < screen_w - 20 {
+                        win.restore_snap();
+                    }
+
+                    // Guia visual de encaixe (Snap Preview)
+                    if mx <= 16 {
+                        self.active_snap_preview = Some(DirtyRect::new(0, 27, screen_w / 2, screen_h.saturating_sub(90)));
+                    } else if mx >= screen_w.saturating_sub(16) {
+                        let half_w = screen_w / 2;
+                        self.active_snap_preview = Some(DirtyRect::new(half_w, 27, screen_w.saturating_sub(half_w), screen_h.saturating_sub(90)));
+                    } else if my <= 32 {
+                        self.active_snap_preview = Some(DirtyRect::new(0, 27, screen_w, screen_h.saturating_sub(90)));
+                    } else {
+                        self.active_snap_preview = None;
+                    }
+
                     let old_box = DirtyRect::new(old_x.saturating_sub(2), old_y.saturating_sub(2), win.width + 4, win.height + 4);
                     let new_box = DirtyRect::new(win.x.saturating_sub(2), win.y.saturating_sub(2), win.width + 4, win.height + 4);
                     drag_damage = Some(old_box.union(&new_box));
@@ -455,24 +524,98 @@ impl AladdinSession {
 
         // Clique com botão esquerdo (transição de 0 para 1)
         if left_clicked && !prev_left_clicked && !dragging_any {
-            // 1. Wingpanel superior (y: 0..26)
+            // 0. Interação prioritária com Notificações Toast
+            if self.notifications.handle_click(mx, my, screen_w, sys.stats().current_tick) {
+                return (false, None);
+            }
+
+            // 0.1 Alternador de Tarefas / App Switcher HUD se aberto
+            if self.app_switcher_open {
+                let action = AppSwitcherHUD::handle_click(screen_w, screen_h, mx, my, &self.wm);
+                match action {
+                    SwitcherAction::FocusWindow(wid) => {
+                        if let Some(w) = self.wm.windows[wid].as_mut() {
+                            w.is_minimized = false;
+                        }
+                        self.wm.bring_to_front(wid);
+                        self.app_switcher_open = false;
+                        return (false, None);
+                    }
+                    SwitcherAction::Close => {
+                        self.app_switcher_open = false;
+                        return (false, None);
+                    }
+                    SwitcherAction::None => {
+                        return (false, None);
+                    }
+                }
+            }
+
+            // 1. Centro de Controle Rápido (Quick Settings) se aberto
+            if self.quick_settings_open {
+                let pop_x = screen_w.saturating_sub(QUICK_SETTINGS_W + 12);
+                let pop_y = 28;
+                let action = QuickSettingsPopover::handle_click(pop_x, pop_y, mx, my);
+                match action {
+                    QuickSettingsAction::SetMode(m) => {
+                        self.mode = m;
+                        let mode_desc = match m {
+                            CapabilityMode::Basic => "Eco (0% FX)",
+                            CapabilityMode::Balanced => "Equilibrado (Sombras)",
+                            CapabilityMode::Advanced => "Glow Neon (Dr460nized)",
+                        };
+                        self.notifications.post(b'#', "Modo Visual", mode_desc, COLOR_PURPLE, 250, sys.stats().current_tick);
+                        return (false, None);
+                    }
+                    QuickSettingsAction::ToggleFirewall => {
+                        sys.toggle_jinnwall_profile();
+                        let prof = sys.jinnwall_profile();
+                        self.notifications.post(b'!', "Firewall JinnWall", prof.name(), COLOR_EMERALD, 250, sys.stats().current_tick);
+                        return (false, None);
+                    }
+                    QuickSettingsAction::CycleStorage => {
+                        sys.cycle_storage_profile();
+                        self.notifications.post(b'D', "Perfil Storage", sys.storage_profile_name(), COLOR_AMBER, 250, sys.stats().current_tick);
+                        return (false, None);
+                    }
+                    QuickSettingsAction::Reboot => {
+                        sys.reboot();
+                    }
+                    QuickSettingsAction::ExitShell => {
+                        self.should_exit = true;
+                        return (false, None);
+                    }
+                    QuickSettingsAction::None => {
+                        if mx >= pop_x && mx < pop_x + QUICK_SETTINGS_W && my >= pop_y && my < pop_y + QUICK_SETTINGS_H {
+                            return (false, None);
+                        }
+                        // Clique fora do popover fecha-o suavemente
+                        self.quick_settings_open = false;
+                    }
+                }
+            }
+
+            // 2. Wingpanel superior (y: 0..26)
             if my < 26 {
                 // Launcher [# Aladdin]
                 if mx >= 8 && mx <= 122 {
                     self.start_menu_open = !self.start_menu_open;
+                    self.quick_settings_open = false;
                     return (false, None);
                 }
-                // RAM Pill
+                // Center Pill (Uptime) / RAM Pill abre Centro de Controle Rápido
+                let center_x = (screen_w / 2).saturating_sub(76);
                 let ram_x = screen_w.saturating_sub(424);
-                if mx >= ram_x && mx <= ram_x + 120 {
-                    if let Some(w) = self.wm.windows[0].as_mut() { w.is_open = true; w.is_minimized = false; }
-                    self.wm.bring_to_front(0);
+                if (mx >= center_x && mx <= center_x + 152) || (mx >= ram_x && mx <= ram_x + 120) {
+                    self.quick_settings_open = !self.quick_settings_open;
+                    self.start_menu_open = false;
                     return (false, None);
                 }
                 // JSA Storage Profile
                 let jsa_x = screen_w.saturating_sub(298);
                 if mx >= jsa_x && mx <= jsa_x + 124 {
                     sys.cycle_storage_profile();
+                    self.notifications.post(b'D', "Perfil Storage", sys.storage_profile_name(), COLOR_AMBER, 250, sys.stats().current_tick);
                     return (false, None);
                 }
                 // FX Capability Mode
@@ -483,6 +626,12 @@ impl AladdinSession {
                         CapabilityMode::Balanced => CapabilityMode::Advanced,
                         CapabilityMode::Advanced => CapabilityMode::Basic,
                     };
+                    let mode_desc = match self.mode {
+                        CapabilityMode::Basic => "Eco (0% FX)",
+                        CapabilityMode::Balanced => "Equilibrado (Sombras)",
+                        CapabilityMode::Advanced => "Glow Neon (Dr460nized)",
+                    };
+                    self.notifications.post(b'#', "Modo Visual", mode_desc, COLOR_PURPLE, 250, sys.stats().current_tick);
                     return (false, None);
                 }
                 // Sair Button
@@ -493,11 +642,11 @@ impl AladdinSession {
                 }
             }
 
-            // 2. Menu Iniciar popup
+            // 3. Menu Iniciar popup
             if self.start_menu_open {
                 if mx >= MENU_X && mx <= MENU_X + MENU_W && my >= MENU_Y && my <= MENU_Y + MENU_H {
                     if my >= MENU_Y + 28 {
-                        let item_idx = (my - (MENU_Y + 28)) / 26;
+                        let item_idx = (my - (MENU_Y + 28)) / 27;
                         match item_idx {
                             0 => {
                                 if let Some(w) = self.wm.windows[0].as_mut() { w.is_open = true; w.is_minimized = false; }
@@ -523,7 +672,10 @@ impl AladdinSession {
                                 if let Some(w) = self.wm.windows[2].as_mut() { w.is_open = true; w.is_minimized = false; }
                                 self.wm.bring_to_front(2);
                             }
-                            6 => sys.cycle_storage_profile(),
+                            6 => {
+                                sys.cycle_storage_profile();
+                                self.notifications.post(b'D', "Perfil Storage", sys.storage_profile_name(), COLOR_AMBER, 250, sys.stats().current_tick);
+                            }
                             7 => sys.reboot(),
                             8 => self.should_exit = true,
                             _ => {}
@@ -536,7 +688,7 @@ impl AladdinSession {
                 }
             }
 
-            // 3. Plank Dock inferior (y >= screen_h - 54)
+            // 4. Plank Dock inferior (y >= screen_h - 54)
             let dock_x = (screen_w / 2).saturating_sub(crate::desktop::dock::DOCK_WIDTH / 2);
             let dock_y = screen_h.saturating_sub(crate::desktop::dock::DOCK_HEIGHT + 10);
             if my >= dock_y && my <= dock_y + crate::desktop::dock::DOCK_HEIGHT && mx >= dock_x && mx <= dock_x + crate::desktop::dock::DOCK_WIDTH {
@@ -633,7 +785,7 @@ impl AladdinSession {
                 return (false, None);
             }
 
-            // 4. Interação com Janelas (ordem inversa de profundidade)
+            // 5. Interação com Janelas (ordem inversa de profundidade)
             if let Some(clicked_idx) = self.wm.find_window_at(mx, my) {
                 self.wm.bring_to_front(clicked_idx);
 
@@ -677,7 +829,7 @@ impl AladdinSession {
                     }
 
                     // Início de arrasto pela barra de título
-                    if win.is_in_title_bar(mx, my) && !win.is_maximized {
+                    if win.is_in_title_bar(mx, my) {
                         win.is_dragging = true;
                         win.drag_offset_x = mx.saturating_sub(win.x);
                         win.drag_offset_y = my.saturating_sub(win.y);
@@ -716,11 +868,20 @@ impl AladdinSession {
                             let b1_x = b0_x + 108;
                             let b2_x = b1_x + 108;
                             // Eco
-                            if mx >= b0_x && mx <= b0_x + 100 { self.mode = CapabilityMode::Basic; }
+                            if mx >= b0_x && mx <= b0_x + 100 {
+                                self.mode = CapabilityMode::Basic;
+                                self.notifications.post(b'#', "Modo Visual", "Eco (0% FX)", COLOR_EMERALD, 200, sys.stats().current_tick);
+                            }
                             // Equilibrado
-                            if mx >= b1_x && mx <= b1_x + 100 { self.mode = CapabilityMode::Balanced; }
+                            if mx >= b1_x && mx <= b1_x + 100 {
+                                self.mode = CapabilityMode::Balanced;
+                                self.notifications.post(b'#', "Modo Visual", "Equilibrado (Sombras)", COLOR_CYAN_NEON, 200, sys.stats().current_tick);
+                            }
                             // Glow Neon
-                            if mx >= b2_x && mx <= b2_x + 100 { self.mode = CapabilityMode::Advanced; }
+                            if mx >= b2_x && mx <= b2_x + 100 {
+                                self.mode = CapabilityMode::Advanced;
+                                self.notifications.post(b'#', "Modo Visual", "Glow Neon (Dr460nized)", COLOR_PURPLE, 200, sys.stats().current_tick);
+                            }
                         }
 
                         // Alternar Perfil Firewall JinnWall
@@ -728,6 +889,8 @@ impl AladdinSession {
                         if my >= fw_btn_y && my <= fw_btn_y + 18 {
                             if mx >= win.x + 20 && mx <= win.x + 240 {
                                 sys.toggle_jinnwall_profile();
+                                let prof = sys.jinnwall_profile();
+                                self.notifications.post(b'!', "Firewall JinnWall", prof.name(), COLOR_EMERALD, 250, sys.stats().current_tick);
                             }
                         }
 
@@ -737,6 +900,7 @@ impl AladdinSession {
                             // Ciclar JSA
                             if mx >= win.x + 12 && mx <= win.x + 152 {
                                 sys.cycle_storage_profile();
+                                self.notifications.post(b'D', "Perfil Storage", sys.storage_profile_name(), COLOR_AMBER, 250, sys.stats().current_tick);
                             }
                             // Reiniciar
                             if mx >= win.x + 160 && mx <= win.x + 300 {
@@ -748,7 +912,8 @@ impl AladdinSession {
                         let rel_y = my.saturating_sub(win.y);
                         let mut storage_adapter = crate::contracts::storage::SystemHostStorageAdapter(sys);
                         self.disks.handle_click(rel_x, rel_y, win.width, win.height, &mut storage_adapter);
-                    } }
+                    }
+                }
 
                 if let Some(ev) = client_ev_to_push {
                     self.wm.push_client_event(clicked_idx, ev);
@@ -779,6 +944,46 @@ impl AladdinSession {
         // Se houver diálogo modal aberto no Gerenciador de Arquivos, consome o evento de teclado prioritariamente
         if self.files.dialog_kind != crate::apps::files::FileDialogKind::None {
             self.files.handle_key(ch, vfs);
+            self.client_damaged = true;
+            return;
+        }
+
+        // Alternador de Tarefas (App Switcher HUD)
+        if self.app_switcher_open {
+            if ch == 0x09 { // Tab: cicla para o próximo item
+                self.app_switcher_index = self.app_switcher_index.wrapping_add(1);
+                self.client_damaged = true;
+                return;
+            } else if ch == b'\n' || ch == b' ' { // Enter ou Espaço: foca na janela selecionada
+                let mut open_windows = [0usize; crate::wm::MAX_WINDOWS];
+                let mut open_count = 0;
+                for i in (0..crate::wm::MAX_WINDOWS).rev() {
+                    let wid = self.wm.order[i];
+                    if let Some(w) = &self.wm.windows[wid] {
+                        if w.is_open {
+                            open_windows[open_count] = wid;
+                            open_count += 1;
+                        }
+                    }
+                }
+                if open_count > 0 {
+                    let target_wid = open_windows[self.app_switcher_index % open_count];
+                    if let Some(w) = self.wm.windows[target_wid].as_mut() {
+                        w.is_minimized = false;
+                    }
+                    self.wm.bring_to_front(target_wid);
+                }
+                self.app_switcher_open = false;
+                self.client_damaged = true;
+                return;
+            } else if ch == 0x1B { // ESC: fecha o alternador sem mudar foco
+                self.app_switcher_open = false;
+                self.client_damaged = true;
+                return;
+            }
+        } else if ch == 0x09 { // Tab abre o Alternador de Tarefas
+            self.app_switcher_open = true;
+            self.app_switcher_index = 1;
             self.client_damaged = true;
             return;
         }
