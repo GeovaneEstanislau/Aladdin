@@ -2240,3 +2240,66 @@ fn test_dock_tooltips_and_window_state_indicators() {
     assert!(has_emerald, "Janela em segundo plano deve exibir indicador esmeralda no Dock");
     assert!(has_amber, "Janela minimizada deve exibir indicador âmbar no Dock");
 }
+
+#[test]
+fn test_client_window_maximize_and_resize_event_dispatch() {
+    use aladdin::contracts::input::EVENT_WINDOW_RESIZE;
+    use aladdin::contracts::process::ProcessHost;
+    use aladdin::contracts::vfs::VfsHost;
+
+    struct TestProc;
+    impl ProcessHost for TestProc {
+        fn spawn_app(&mut self, _path: &str) -> Result<usize, ()> { Ok(42) }
+        fn execute_command(&mut self, _cmd: &str, _cb: &mut dyn FnMut(&str, u32)) {}
+        fn is_process_alive(&self, _pid: usize) -> bool { true }
+    }
+
+    struct DummyVfs;
+    impl VfsHost for DummyVfs {
+        fn readdir(&self, _path: &str, _cb: &mut dyn FnMut(&str, bool, bool, bool)) {}
+        fn read_file(&self, _path: &str, _dest: &mut [u8]) -> Result<usize, ()> { Ok(0) }
+        fn write_file(&self, _path: &str, _data: &[u8]) -> Result<(), ()> { Ok(()) }
+        fn remove_file(&self, _path: &str) -> Result<(), ()> { Ok(()) }
+    }
+
+    let mut session = aladdin::desktop::session::AladdinSession::new();
+    let sys = MockSystem::new();
+    let vfs = DummyVfs;
+    let mut proc = TestProc;
+
+    let win_id = session.create_client_window(42, "Browser Test", 300, 180)
+        .expect("Janela cliente criada");
+    assert!(win_id < aladdin::wm::manager::MAX_WINDOWS);
+
+    // Inicialmente buffer é 300 * 180 = 54000
+    assert_eq!(session.wm.client_buffers[win_id].as_ref().unwrap().len(), 300 * 180);
+
+    // Posição do botão de maximizar da janela cliente (x + width - 44 + 8)
+    let win = session.wm.windows[win_id].as_ref().unwrap();
+    let max_btn_x = win.x + win.width - 36;
+    let max_btn_y = win.y + 10;
+
+    // Simula clique no botão maximizar
+    session.handle_mouse(max_btn_x, max_btn_y, 1, &sys, &vfs, &mut proc, 1024, 768);
+
+    // Verifica que a janela foi maximizada
+    let win_max = session.wm.windows[win_id].as_ref().unwrap();
+    assert!(win_max.is_maximized);
+    let expected_client_w = win_max.client_width();
+    let expected_client_h = win_max.client_height();
+    let expected_pixels = expected_client_w * expected_client_h;
+
+    // Buffer interno do compositor foi redimensionado atomicamente
+    assert_eq!(session.wm.client_buffers[win_id].as_ref().unwrap().len(), expected_pixels);
+
+    // Evento EVENT_WINDOW_RESIZE foi enfileirado para o processo cliente
+    let ev = session.poll_client_event(42, win_id).expect("Poll ok").expect("Evento deve existir");
+    assert_eq!(ev.event_type, EVENT_WINDOW_RESIZE);
+    assert_eq!(ev.x, expected_client_w as i32);
+    assert_eq!(ev.y, expected_client_h as i32);
+
+    // Teste de envio de buffer com as novas dimensões
+    let new_buf = alloc::vec![0x00FF_0000; expected_pixels];
+    let update_res = session.update_client_buffer(42, win_id, &new_buf);
+    assert!(update_res.is_ok(), "Atualização com novas dimensões de tela cheia deve ter sucesso");
+}

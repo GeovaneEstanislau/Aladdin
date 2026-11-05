@@ -145,6 +145,9 @@ impl WindowManager {
             return Err(WindowOpError::InvalidDimensions);
         }
         if let Some(client_buf) = self.client_buffers[win_id].as_mut() {
+            if client_buf.len() != buffer.len() {
+                client_buf.resize(buffer.len(), 0x0018_1825);
+            }
             client_buf.copy_from_slice(buffer);
             return Ok(());
         }

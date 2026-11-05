@@ -831,6 +831,24 @@ impl AladdinSession {
                     }
                     if win.is_in_max_btn(mx, my) {
                         let damage = win.toggle_maximize(screen_w, screen_h, 26, 54);
+                        if win.owner_pid.is_some() {
+                            let client_w = win.client_width();
+                            let client_h = win.client_height();
+                            let pixels = client_w * client_h;
+                            if pixels > 0 && pixels <= 1024 * 768 {
+                                self.wm.client_buffers[clicked_idx] = Some(alloc::vec![0x0018_1825; pixels]);
+                                let resize_ev = crate::contracts::input::ClientWindowEvent {
+                                    event_type: crate::contracts::input::EVENT_WINDOW_RESIZE,
+                                    win_id: clicked_idx as u32,
+                                    x: client_w as i32,
+                                    y: client_h as i32,
+                                    button_or_key: 0,
+                                    modifiers: 0,
+                                    timestamp: sys.stats().current_tick,
+                                };
+                                self.wm.push_client_event(clicked_idx, resize_ev);
+                            }
+                        }
                         return (false, Some(damage));
                     }
 
