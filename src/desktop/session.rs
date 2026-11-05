@@ -835,7 +835,7 @@ impl AladdinSession {
                             let client_w = win.client_width();
                             let client_h = win.client_height();
                             let pixels = client_w * client_h;
-                            if pixels > 0 && pixels <= 1024 * 768 {
+                            if pixels > 0 && pixels <= crate::wm::manager::WindowManager::MAX_CLIENT_BUFFER_PIXELS {
                                 self.wm.client_buffers[clicked_idx] = Some(alloc::vec![0x0018_1825; pixels]);
                                 let resize_ev = crate::contracts::input::ClientWindowEvent {
                                     event_type: crate::contracts::input::EVENT_WINDOW_RESIZE,

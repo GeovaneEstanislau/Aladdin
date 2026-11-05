@@ -129,6 +129,8 @@ impl WindowManager {
         Ok(id)
     }
 
+    pub const MAX_CLIENT_BUFFER_PIXELS: usize = 1920 * 1080;
+
     pub fn update_client_buffer(
         &mut self,
         owner_pid: usize,
@@ -140,18 +142,25 @@ impl WindowManager {
         if win.owner_pid != Some(owner_pid) {
             return Err(WindowOpError::PermissionDenied);
         }
-        let expected_len = win.client_width() * win.client_height();
-        if buffer.len() != expected_len {
+        if buffer.is_empty() || buffer.len() > Self::MAX_CLIENT_BUFFER_PIXELS {
             return Err(WindowOpError::InvalidDimensions);
         }
-        if let Some(client_buf) = self.client_buffers[win_id].as_mut() {
-            if client_buf.len() != buffer.len() {
-                client_buf.resize(buffer.len(), 0x0018_1825);
+        let expected_len = win.client_width() * win.client_height();
+        let client_buf = self.client_buffers[win_id].as_mut().ok_or(WindowOpError::NotFound)?;
+
+        if buffer.len() == expected_len {
+            if client_buf.len() != expected_len {
+                client_buf.resize(expected_len, 0x0018_1825);
             }
             client_buf.copy_from_slice(buffer);
-            return Ok(());
+            Ok(())
+        } else if buffer.len() == client_buf.len() {
+            // Tolerância transitória a redimensionamento em voo: aceita o quadro anterior
+            client_buf.copy_from_slice(buffer);
+            Ok(())
+        } else {
+            Err(WindowOpError::InvalidDimensions)
         }
-        Err(WindowOpError::NotFound)
     }
 
     pub fn close_client_window(
