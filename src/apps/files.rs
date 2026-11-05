@@ -321,7 +321,10 @@ impl FileManagerApp {
         plen += clean.len();
 
         let path_str = core::str::from_utf8(&path_buf[..plen]).map_err(|_| "Erro UTF-8")?;
-        vfs.create_dir(path_str).map_err(|_| "Falha ao criar pasta no VFS")?;
+        if let Err(_) = vfs.create_dir(path_str) {
+            self.set_status("[X] Falha ao criar pasta no VFS", true);
+            return Err("Falha ao criar pasta no VFS");
+        }
 
         self.refresh_cache(vfs);
         self.set_status("[V] Pasta criada com sucesso no VFS", false);
@@ -353,7 +356,10 @@ impl FileManagerApp {
         plen += clean.len();
 
         let path_str = core::str::from_utf8(&path_buf[..plen]).map_err(|_| "Erro UTF-8")?;
-        vfs.create_file(path_str).map_err(|_| "Falha ao criar arquivo no VFS")?;
+        if let Err(_) = vfs.create_file(path_str) {
+            self.set_status("[X] Falha ao criar arquivo no VFS", true);
+            return Err("Falha ao criar arquivo no VFS");
+        }
 
         self.refresh_cache(vfs);
         self.set_status("[V] Arquivo criado com sucesso no VFS", false);
