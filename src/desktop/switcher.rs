@@ -130,24 +130,12 @@ impl AppSwitcherHUD {
                 fill_rounded_rect(buf, screen_w, screen_h, hud_x + 10, item_y, item_w, ITEM_HEIGHT, 6, row_bg);
                 draw_rounded_outline(buf, screen_w, screen_h, hud_x + 10, item_y, item_w, ITEM_HEIGHT, 6, row_bd);
 
-                // Ícone e acento de cor do aplicativo
-                let (glyph, badge_fg) = match win.id {
-                    0 => ("[#]", COLOR_CYAN_NEON),
-                    1 => ("[>]", COLOR_EMERALD),
-                    2 => ("[?]", COLOR_TEXT_PRI),
-                    3 => ("[~]", COLOR_AMBER),
-                    4 => ("[%]", COLOR_PURPLE),
-                    5 => ("[D]", COLOR_BLUE_PRIMARY),
-                    _ => ("[@]", COLOR_CYAN_NEON),
-                };
-
                 // Indicador de seleção
                 if is_selected {
                     draw_char(buf, screen_w, screen_h, b'>', hud_x + 16, item_y + 10, COLOR_CYAN_NEON, Some(row_bg));
                 }
 
-                draw_string(buf, screen_w, screen_h, glyph, hud_x + 28, item_y + 10, badge_fg, Some(row_bg));
-                draw_string(buf, screen_w, screen_h, win.title_str(), hud_x + 60, item_y + 10, COLOR_TEXT_PRI, Some(row_bg));
+                draw_string(buf, screen_w, screen_h, win.title_str(), hud_x + 28, item_y + 10, COLOR_TEXT_PRI, Some(row_bg));
 
                 // Tag de estado da janela (Foco / Ativo / Minimizada)
                 let (state_str, state_color) = if win.is_minimized {

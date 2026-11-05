@@ -315,13 +315,9 @@ impl WindowManager {
             }
         }
 
-        // Título da janela e indicador de foco
-        if is_active {
-            draw_char(buf, screen_w, screen_h, b'*', win.x + 8, win.y + 4, COLOR_CYAN, Some(title_color));
-            draw_string(buf, screen_w, screen_h, win.title_str(), win.x + 20, win.y + 4, COLOR_TEXT_PRI, Some(title_color));
-        } else {
-            draw_string(buf, screen_w, screen_h, win.title_str(), win.x + 10, win.y + 4, COLOR_TEXT_MUTED, Some(title_color));
-        }
+        // Título da janela
+        let text_color = if is_active { COLOR_TEXT_PRI } else { COLOR_TEXT_MUTED };
+        draw_string(buf, screen_w, screen_h, win.title_str(), win.x + 10, win.y + 4, text_color, Some(title_color));
 
         // Trio de botões semáforo arredondados (Traffic-Light / elementary OS)
         let btn_y = win.y + 4;

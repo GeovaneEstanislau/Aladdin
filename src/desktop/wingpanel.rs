@@ -24,12 +24,11 @@ pub fn render_wingpanel(
         draw_line(buf, screen_w, screen_h, 0, (WINGPANEL_HEIGHT + 1) as isize, screen_w as isize, (WINGPANEL_HEIGHT + 1) as isize, COLOR_CYAN_NEON);
     }
 
-    // 2. Launcher Pill [# Aladdin]
+    // 2. Launcher Pill [Aladdin]
     let launcher_bg = if start_menu_open { COLOR_SURFACE_HOVER } else { COLOR_SURFACE_L1 };
     let launcher_bd = if start_menu_open { COLOR_CYAN_NEON } else { COLOR_BORDER_MUTED };
-    draw_pill(buf, screen_w, screen_h, 8, 3, 114, 20, launcher_bg, launcher_bd);
-    draw_char(buf, screen_w, screen_h, b'#', 16, 5, COLOR_CYAN_NEON, Some(launcher_bg));
-    draw_string(buf, screen_w, screen_h, " Aladdin", 24, 5, COLOR_TEXT_PRI, Some(launcher_bg));
+    draw_pill(buf, screen_w, screen_h, 8, 3, 92, 20, launcher_bg, launcher_bd);
+    draw_string(buf, screen_w, screen_h, "Aladdin", 26, 5, COLOR_TEXT_PRI, Some(launcher_bg));
 
     // 3. Center Pill: Relógio / Uptime & APIC Timer (Proporção Áurea elementary OS)
     let center_x = (screen_w / 2).saturating_sub(76);

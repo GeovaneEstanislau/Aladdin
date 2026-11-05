@@ -29,13 +29,13 @@ pub fn render_dock(
     draw_rounded_outline(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, 12, COLOR_BORDER_ACT);
 
     let slots = [
-        ("[#] Monitor", dock_x + 6, 0),
-        ("[>] Console", dock_x + 100, 1),
-        ("[~] Arquivos", dock_x + 194, 3),
-        ("[D] Discos", dock_x + 288, 5),
-        ("[@] Browser", dock_x + 382, browser_win_id.unwrap_or(usize::MAX)),
-        ("[%] Ajustes", dock_x + 476, 4),
-        ("[?] Sobre", dock_x + 570, 2),
+        ("Monitor", dock_x + 6, 0),
+        ("Console", dock_x + 100, 1),
+        ("Arquivos", dock_x + 194, 3),
+        ("Discos", dock_x + 288, 5),
+        ("Browser", dock_x + 382, browser_win_id.unwrap_or(usize::MAX)),
+        ("Ajustes", dock_x + 476, 4),
+        ("Sobre", dock_x + 570, 2),
     ];
 
     let mut hovered_tip: Option<(&str, usize)> = None;
@@ -49,20 +49,22 @@ pub fn render_dock(
             fill_rounded_rect(buf, screen_w, screen_h, slot_x, dock_y + 4, 88, 34, 6, slot_bg);
             draw_rounded_outline(buf, screen_w, screen_h, slot_x, dock_y + 4, 88, 34, 6, slot_bd);
             let tip = match label {
-                "[#] Monitor" => "Monitor de Recursos",
-                "[>] Console" => "Terminal Shell Ring 3",
-                "[~] Arquivos" => "Arquivos (FAT32 / Ext2)",
-                "[D] Discos" => "Gerenciador de Discos",
-                "[@] Browser" => "Jinn Web Browser",
-                "[%] Ajustes" => "Ajustes do Desktop",
-                "[?] Sobre" => "Sobre o Ecossistema",
+                "Monitor" => "Monitor de Recursos",
+                "Console" => "Terminal Shell Ring 3",
+                "Arquivos" => "Arquivos (FAT32 / Ext2)",
+                "Discos" => "Gerenciador de Discos",
+                "Browser" => "Jinn Web Browser",
+                "Ajustes" => "Ajustes do Desktop",
+                "Sobre" => "Sobre o Ecossistema",
                 _ => label,
             };
             hovered_tip = Some((tip, slot_x));
         }
 
+        let label_w = label.len() * 8;
+        let text_x = slot_x + (88usize.saturating_sub(label_w)) / 2;
         let text_color = if is_hover { COLOR_WHITE } else { COLOR_TEXT_PRI };
-        draw_string(buf, screen_w, screen_h, label, slot_x + 6, dock_y + 12, text_color, Some(slot_bg));
+        draw_string(buf, screen_w, screen_h, label, text_x, dock_y + 12, text_color, Some(slot_bg));
 
         // Indicador de app ativa (elementary OS dot / line indicator)
         if win_id != usize::MAX {
