@@ -139,7 +139,7 @@ impl QuickSettingsPopover {
         let r_bg = if is_r_hover { 0x00D9_7706 } else { COLOR_SURFACE_L2 };
         fill_rounded_rect(buf, screen_w, screen_h, r_btn_x, act_btn_y, half_w, 26, 4, r_bg);
         draw_rounded_outline(buf, screen_w, screen_h, r_btn_x, act_btn_y, half_w, 26, 4, COLOR_AMBER);
-        draw_string(buf, screen_w, screen_h, "[R] Reiniciar", r_btn_x + 16, act_btn_y + 7, if is_r_hover { COLOR_WHITE } else { COLOR_AMBER }, Some(r_bg));
+        draw_string(buf, screen_w, screen_h, "Reiniciar", r_btn_x + 24, act_btn_y + 7, if is_r_hover { COLOR_WHITE } else { COLOR_AMBER }, Some(r_bg));
 
         // Botão Sair para Shell
         let s_btn_x = popover_x + 18 + half_w;

@@ -943,7 +943,7 @@ impl FileManagerApp {
         let fg_v0 = if is_v0 { COLOR_CYAN } else { COLOR_TEXT_PRI };
         fill_rect(buf, screen_w, screen_h, sb_x + 4, main_y + 24, sb_w - 8, 22, bg_v0);
         draw_rect_outline(buf, screen_w, screen_h, sb_x + 4, main_y + 24, sb_w - 8, 22, bd_v0);
-        draw_string(buf, screen_w, screen_h, "[D] /disk (RW)", sb_x + 8, main_y + 28, fg_v0, Some(bg_v0));
+        draw_string(buf, screen_w, screen_h, "/disk (RW)", sb_x + 8, main_y + 28, fg_v0, Some(bg_v0));
 
         // Item Volume 1: /ext2
         let is_v1 = self.active_volume == 1;
@@ -952,7 +952,7 @@ impl FileManagerApp {
         let fg_v1 = if is_v1 { COLOR_CYAN } else { COLOR_TEXT_PRI };
         fill_rect(buf, screen_w, screen_h, sb_x + 4, main_y + 50, sb_w - 8, 22, bg_v1);
         draw_rect_outline(buf, screen_w, screen_h, sb_x + 4, main_y + 50, sb_w - 8, 22, bd_v1);
-        draw_string(buf, screen_w, screen_h, "[E] /ext2 (RO)", sb_x + 8, main_y + 54, fg_v1, Some(bg_v1));
+        draw_string(buf, screen_w, screen_h, "/ext2 (RO)", sb_x + 8, main_y + 54, fg_v1, Some(bg_v1));
 
         // 4. Área Principal de Listagem de Arquivos (wx + 128 a wx + ww - 8)
         let list_x = wx + 128;

@@ -207,7 +207,7 @@ impl DiskManagerApp {
             fill_rect(buf, screen_w, screen_h, dx, dy, dw, dh, 0x001E_1B4B);
             draw_rect_outline(buf, screen_w, screen_h, dx, dy, dw, dh, COLOR_RUBY);
 
-            draw_string(buf, screen_w, screen_h, "[!] AVISO: ACAO DESTRUTIVA", dx + 12, dy + 12, COLOR_RUBY, Some(0x001E_1B4B));
+            draw_string(buf, screen_w, screen_h, "AVISO: ACAO DESTRUTIVA", dx + 12, dy + 12, COLOR_RUBY, Some(0x001E_1B4B));
             draw_string(
                 buf, screen_w, screen_h,
                 "Deseja formatar este volume?",
