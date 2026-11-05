@@ -180,7 +180,7 @@ impl FileManagerApp {
 
     pub fn move_selected(&mut self, dest_dir: &str, vfs: &dyn VfsHost) -> Result<(), &'static str> {
         if self.is_read_only() {
-            self.set_status("[Erro] Volume somente-leitura. Movimentacao negada.", true);
+            self.set_status("[X] Volume somente-leitura. Movimentacao negada.", true);
             return Err("Volume somente-leitura");
         }
         let sel_idx = self.selected_index.ok_or("Nenhum arquivo selecionado")?;
@@ -298,13 +298,13 @@ impl FileManagerApp {
 
     pub fn create_folder(&mut self, name: &str, vfs: &dyn VfsHost) -> Result<(), &'static str> {
         if self.is_read_only() {
-            self.set_status("[Erro] Volume somente-leitura. Criacao negada.", true);
+            self.set_status("[X] Volume somente-leitura. Criacao negada.", true);
             return Err("Volume somente-leitura");
         }
 
         let clean = name.trim();
         if clean.is_empty() || clean.len() > 11 {
-            self.set_status("[Erro] Nome de pasta invalido (maximo 11 caracteres 8.3)", true);
+            self.set_status("[X] Nome de pasta invalido (maximo 11 caracteres 8.3)", true);
             return Err("Nome invalido");
         }
 
@@ -324,19 +324,19 @@ impl FileManagerApp {
         vfs.create_dir(path_str).map_err(|_| "Falha ao criar pasta no VFS")?;
 
         self.refresh_cache(vfs);
-        self.set_status("[OK] Pasta criada com sucesso no VFS", false);
+        self.set_status("[V] Pasta criada com sucesso no VFS", false);
         Ok(())
     }
 
     pub fn create_file(&mut self, name: &str, vfs: &dyn VfsHost) -> Result<(), &'static str> {
         if self.is_read_only() {
-            self.set_status("[Erro] Volume somente-leitura. Criacao negada.", true);
+            self.set_status("[X] Volume somente-leitura. Criacao negada.", true);
             return Err("Volume somente-leitura");
         }
 
         let clean = name.trim();
         if clean.is_empty() || clean.len() > 12 {
-            self.set_status("[Erro] Nome de arquivo invalido (maximo 12 caracteres 8.3)", true);
+            self.set_status("[X] Nome de arquivo invalido (maximo 12 caracteres 8.3)", true);
             return Err("Nome invalido");
         }
 
@@ -356,13 +356,13 @@ impl FileManagerApp {
         vfs.create_file(path_str).map_err(|_| "Falha ao criar arquivo no VFS")?;
 
         self.refresh_cache(vfs);
-        self.set_status("[OK] Arquivo criado com sucesso no VFS", false);
+        self.set_status("[V] Arquivo criado com sucesso no VFS", false);
         Ok(())
     }
 
     pub fn copy_selected(&mut self, vfs: &dyn VfsHost) -> Result<(), &'static str> {
         if self.is_read_only() {
-            self.set_status("[Erro] Volume somente-leitura. Copia negada.", true);
+            self.set_status("[X] Volume somente-leitura. Copia negada.", true);
             return Err("Volume somente-leitura");
         }
 
@@ -373,7 +373,7 @@ impl FileManagerApp {
 
         let entry = self.file_cache[sel_idx];
         if entry.is_dir {
-            self.set_status("[Erro] Copia de diretorios inteiros nao suportada", true);
+            self.set_status("[X] Copia de diretorios inteiros nao suportada", true);
             return Err("Diretorio nao suportado");
         }
 
@@ -409,13 +409,13 @@ impl FileManagerApp {
         vfs.copy_file(src_path, dst_path).map_err(|_| "Falha ao copiar arquivo no VFS")?;
 
         self.refresh_cache(vfs);
-        self.set_status("[OK] Copia criada com sucesso no VFS", false);
+        self.set_status("[V] Copia criada com sucesso no VFS", false);
         Ok(())
     }
 
     pub fn rename_selected(&mut self, new_name: &str, vfs: &dyn VfsHost) -> Result<(), &'static str> {
         if self.is_read_only() {
-            self.set_status("[Erro] Volume somente-leitura. Renomeacao negada.", true);
+            self.set_status("[X] Volume somente-leitura. Renomeacao negada.", true);
             return Err("Volume somente-leitura");
         }
 
@@ -426,7 +426,7 @@ impl FileManagerApp {
 
         let clean = new_name.trim();
         if clean.is_empty() || clean.len() > 12 {
-            self.set_status("[Erro] Novo nome invalido", true);
+            self.set_status("[X] Novo nome invalido", true);
             return Err("Nome invalido");
         }
 
@@ -452,13 +452,13 @@ impl FileManagerApp {
         vfs.rename_file(old_path, new_path).map_err(|_| "Falha ao renomear arquivo no VFS")?;
 
         self.refresh_cache(vfs);
-        self.set_status("[OK] Arquivo renomeado com sucesso no VFS", false);
+        self.set_status("[V] Arquivo renomeado com sucesso no VFS", false);
         Ok(())
     }
 
     pub fn delete_selected(&mut self, vfs: &dyn VfsHost) -> Result<(), &'static str> {
         if self.is_read_only() {
-            self.set_status("[Erro] Volume somente-leitura. Exclusao negada.", true);
+            self.set_status("[X] Volume somente-leitura. Exclusao negada.", true);
             return Err("Volume somente-leitura");
         }
 
@@ -481,7 +481,7 @@ impl FileManagerApp {
         vfs.remove_file(path_str).map_err(|_| "Falha ao excluir arquivo no VFS")?;
 
         self.refresh_cache(vfs);
-        self.set_status("[OK] Arquivo excluido com sucesso do VFS", false);
+        self.set_status("[V] Arquivo excluido com sucesso do VFS", false);
         Ok(())
     }
 

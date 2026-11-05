@@ -119,6 +119,12 @@ impl AladdinSession {
         None
     }
 
+    pub fn init_from_vfs(&mut self, vfs: &dyn crate::contracts::vfs::VfsHost) {
+        if let Some(saved_mode) = self.settings.load_from_vfs(vfs) {
+            self.mode = saved_mode;
+        }
+    }
+
     pub fn register_browser_pid(&mut self, pid: usize) {
         if self.browser_pid.is_none() {
             self.browser_pid = Some(pid);
@@ -253,7 +259,7 @@ impl AladdinSession {
         self.wm.windows[3] = Some(w3);
 
         // Janela 4: Ajustes e Configurações (fechada)
-        let mut w4 = Window::new(4, "Ajustes do Aladdin Desktop", 200, 150, 440, 276);
+        let mut w4 = Window::new(4, "Ajustes do Aladdin Desktop", 200, 130, 440, 330);
         w4.is_open = false;
         self.wm.windows[4] = Some(w4);
 
@@ -334,8 +340,8 @@ impl AladdinSession {
         mouse_x: usize,
         mouse_y: usize,
     ) {
-        // 1. Wallpaper procedural com gradiente profundo e grade geométrica
-        render_procedural_wallpaper(buf, screen_w, screen_h, self.mode);
+        // 1. Wallpaper procedural com suporte a múltiplos temas e persistência
+        render_wallpaper(buf, screen_w, screen_h, self.mode, self.settings.wallpaper_id);
 
         // 2. Guia de recorte / Snap Preview ativo (se arrastando janela para as bordas)
         if let Some(ref snap) = self.active_snap_preview {
@@ -874,41 +880,76 @@ impl AladdinSession {
                         }
                     } else if win.id == 4 {
                         // Ajustes e Configurações
-                        let btn_y = win.y + 72;
-                        if my >= btn_y && my <= btn_y + 22 {
-                            let b0_x = win.x + 12;
-                            let b1_x = b0_x + 108;
-                            let b2_x = b1_x + 108;
+                        let b0_x = win.x + 12;
+                        let b1_x = b0_x + 124 + 8;
+                        let b2_x = b1_x + 124 + 8;
+                        let btn_w = 124;
+
+                        // 1. Modo de Composição Visual (y: win.y + 64 .. win.y + 84)
+                        let mode_btn_y = win.y + 64;
+                        if my >= mode_btn_y && my <= mode_btn_y + 20 {
                             // Eco
-                            if mx >= b0_x && mx <= b0_x + 100 {
+                            if mx >= b0_x && mx <= b0_x + btn_w {
                                 self.mode = CapabilityMode::Basic;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
                                 self.notifications.post(b'#', "Modo Visual", "Eco (0% FX)", COLOR_EMERALD, 200, sys.stats().current_tick);
                             }
                             // Equilibrado
-                            if mx >= b1_x && mx <= b1_x + 100 {
+                            if mx >= b1_x && mx <= b1_x + btn_w {
                                 self.mode = CapabilityMode::Balanced;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
                                 self.notifications.post(b'#', "Modo Visual", "Equilibrado (Sombras)", COLOR_CYAN_NEON, 200, sys.stats().current_tick);
                             }
                             // Glow Neon
-                            if mx >= b2_x && mx <= b2_x + 100 {
+                            if mx >= b2_x && mx <= b2_x + btn_w {
                                 self.mode = CapabilityMode::Advanced;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
                                 self.notifications.post(b'#', "Modo Visual", "Glow Neon (Dr460nized)", COLOR_PURPLE, 200, sys.stats().current_tick);
                             }
                         }
 
-                        // Alternar Perfil Firewall JinnWall
-                        let fw_btn_y = win.y + 166 + 40;
-                        if my >= fw_btn_y && my <= fw_btn_y + 18 {
-                            if mx >= win.x + 20 && mx <= win.x + 240 {
-                                sys.toggle_jinnwall_profile();
-                                let prof = sys.jinnwall_profile();
-                                self.notifications.post(b'!', "Firewall JinnWall", prof.name(), COLOR_EMERALD, 250, sys.stats().current_tick);
+                        // 2. Papel de Parede (y: win.y + 106 .. win.y + 126)
+                        let wp_btn_y = win.y + 106;
+                        if my >= wp_btn_y && my <= wp_btn_y + 20 {
+                            if mx >= b0_x && mx <= b0_x + btn_w {
+                                self.settings.wallpaper_id = 0;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                self.notifications.post(b'*', "Papel de Parede", "Cyber-Aurora Ativo", COLOR_CYAN_NEON, 200, sys.stats().current_tick);
+                            }
+                            if mx >= b1_x && mx <= b1_x + btn_w {
+                                self.settings.wallpaper_id = 1;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                self.notifications.post(b'*', "Papel de Parede", "Midnight Minimalist Ativo", COLOR_EMERALD, 200, sys.stats().current_tick);
+                            }
+                            if mx >= b2_x && mx <= b2_x + btn_w {
+                                self.settings.wallpaper_id = 2;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                self.notifications.post(b'*', "Papel de Parede", "Techno Grid Ativo", COLOR_PURPLE, 200, sys.stats().current_tick);
                             }
                         }
 
-                        // Ações rápidas
-                        let act_y = win.y + 236;
-                        if my >= act_y && my <= act_y + 24 {
+                        // 3. Salvar Ajustes no Disco (y: win.y + 156 .. win.y + 174)
+                        let save_btn_y = win.y + 156;
+                        if my >= save_btn_y && my <= save_btn_y + 18 {
+                            if mx >= win.x + 20 && mx <= win.x + 270 {
+                                match self.settings.save_to_vfs(vfs, self.mode) {
+                                    Ok(_) => { self.notifications.post(b'V', "Persistencia VFS", "Preferencias salvas em /disk/SETTINGS.CFG", COLOR_EMERALD, 250, sys.stats().current_tick); }
+                                    Err(_) => { self.notifications.post(b'X', "Persistencia VFS", "Falha ao gravar configuracoes no disco", COLOR_RUBY, 250, sys.stats().current_tick); }
+                                };
+                            }
+                        }
+
+                        // 4. Alternar Perfil Firewall JinnWall (suporta layout canônico win.y + 206 e expandido win.y + 260)
+                        let is_fw_btn = (my >= win.y + 206 && my <= win.y + 224) || (my >= win.y + 258 && my <= win.y + 278);
+                        if is_fw_btn && mx >= win.x + 20 && mx <= win.x + 240 {
+                            sys.toggle_jinnwall_profile();
+                            let prof = sys.jinnwall_profile();
+                            self.notifications.post(b'!', "Firewall JinnWall", prof.name(), COLOR_EMERALD, 250, sys.stats().current_tick);
+                        }
+
+                        // 5. Ações rápidas (y: win.y + 290 .. win.y + 312)
+                        let act_y = win.y + 290;
+                        if my >= act_y && my <= act_y + 22 {
                             // Ciclar JSA
                             if mx >= win.x + 12 && mx <= win.x + 152 {
                                 sys.cycle_storage_profile();
@@ -1043,8 +1084,9 @@ impl AladdinSession {
         let (screen_w, screen_h, _pitch) = fb.dimensions();
         self.should_exit = false;
 
-        // Atualiza cache inicial de arquivos
+        // Atualiza cache inicial de arquivos e carrega preferências salvas
         self.files.refresh_cache(vfs);
+        self.init_from_vfs(vfs);
 
         let (mut last_mx, mut last_my, mut last_btn) = poll_mouse();
         let mut last_ticks = sys.stats().current_tick;

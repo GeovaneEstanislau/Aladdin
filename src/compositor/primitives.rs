@@ -519,6 +519,108 @@ pub fn draw_drop_shadow_rounded(
     fill_rounded_rect(buf, screen_w, screen_h, x + offset, y + offset, width, height, radius, shadow_color);
 }
 
+/// Renderiza wallpaper procedural com suporte a múltiplos temas selecionáveis.
+/// wallpaper_id:
+///   0 = Cyber-Aurora (Padrão: aurora boreal fluida e constelações)
+///   1 = Midnight Minimalist (Azul noite profundo e microestrelas discretas)
+///   2 = Techno Grid (Horizonte synthwave com grade de perspectiva)
+pub fn render_wallpaper(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    mode: CapabilityMode,
+    wallpaper_id: u8,
+) {
+    if screen_w == 0 || screen_h == 0 { return; }
+
+    match wallpaper_id {
+        1 => {
+            // 1. Midnight Minimalist
+            for y in 0..screen_h {
+                let factor = (y * 256) / screen_h;
+                let r = 5 + ((8 * factor) / 256);
+                let g = 8 + ((12 * factor) / 256);
+                let b = 16 + ((22 * factor) / 256);
+                let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+                let row_start = y * screen_w;
+                for x in 0..screen_w {
+                    buf[row_start + x] = row_color;
+                }
+            }
+            let stars: [(usize, usize, u32); 10] = [
+                (screen_w / 7, 90, 0x0047_5569),
+                (screen_w / 4, 150, 0x0064_748B),
+                (screen_w / 2, 80, 0x0094_A3B8),
+                ((screen_w * 3) / 4, 110, 0x0064_748B),
+                ((screen_w * 6) / 7, 180, 0x0047_5569),
+                (screen_w / 5, 280, 0x0033_4155),
+                (screen_w / 2 + 50, 240, 0x0047_5569),
+                ((screen_w * 4) / 5, 270, 0x0033_4155),
+                (screen_w / 3, 330, 0x0033_4155),
+                ((screen_w * 2) / 3, 310, 0x0047_5569),
+            ];
+            for &(sx, sy, c) in &stars {
+                if sx < screen_w && sy < screen_h {
+                    draw_pixel(buf, screen_w, screen_h, sx, sy, c);
+                }
+            }
+        }
+        2 => {
+            // 2. Techno Grid
+            let horizon_y = (screen_h * 55) / 100;
+            for y in 0..screen_h {
+                let row_start = y * screen_w;
+                if y < horizon_y {
+                    let factor = (y * 256) / horizon_y;
+                    let r = 8 + ((18 * factor) / 256);
+                    let g = 10 + ((14 * factor) / 256);
+                    let b = 28 + ((36 * factor) / 256);
+                    let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+                    for x in 0..screen_w {
+                        buf[row_start + x] = row_color;
+                    }
+                } else {
+                    let dist = y - horizon_y;
+                    let factor = (dist * 256) / (screen_h - horizon_y);
+                    let r = 12 + ((15 * factor) / 256);
+                    let g = 14 + ((20 * factor) / 256);
+                    let b = 32 + ((45 * factor) / 256);
+                    let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+                    for x in 0..screen_w {
+                        buf[row_start + x] = row_color;
+                    }
+                }
+            }
+            // Linha de neon no horizonte
+            for x in 0..screen_w {
+                draw_pixel(buf, screen_w, screen_h, x, horizon_y, 0x0038_BDF8);
+                if horizon_y > 0 {
+                    draw_pixel(buf, screen_w, screen_h, x, horizon_y - 1, 0x001E_3A8A);
+                }
+            }
+            // Linhas de perspectiva abaixo do horizonte
+            let center_x = screen_w / 2;
+            for i in -6..=6 {
+                let start_x = center_x as isize + i * 20;
+                let end_x = center_x as isize + i * 110;
+                draw_line(buf, screen_w, screen_h, start_x, horizon_y as isize, end_x, (screen_h - 1) as isize, 0x001E_3A5F);
+            }
+            // Linhas horizontais com espaçamento de perspectiva
+            let mut gh_y = horizon_y + 12;
+            let mut step = 8;
+            while gh_y < screen_h {
+                draw_line(buf, screen_w, screen_h, 0, gh_y as isize, screen_w as isize, gh_y as isize, 0x0017_2554);
+                step += 7;
+                gh_y += step;
+            }
+        }
+        _ => {
+            // 0: Cyber-Aurora (Padrão)
+            render_procedural_wallpaper(buf, screen_w, screen_h, mode);
+        }
+    }
+}
+
 /// Renderiza wallpaper procedural "Cyber-Aurora" exclusivo do Aladdin OS
 /// Apresenta gradiente noturno profundo, fitas aurorais luminescentes e nós de constelações tecnológicas.
 pub fn render_procedural_wallpaper(
