@@ -519,11 +519,196 @@ pub fn draw_drop_shadow_rounded(
     fill_rounded_rect(buf, screen_w, screen_h, x + offset, y + offset, width, height, radius, shadow_color);
 }
 
+// ── Efeitos de Acrílico e Desfoque Real (Glassmorphism & Real Blur) ──────────
+
+/// Aplica um desfoque rápido (Fast 2-Pass Separable Box Blur) em uma sub-região retangular do buffer.
+/// Utiliza janela deslizante (sliding window moving average) com complexidade O(N) por pixel.
+pub fn box_blur_rect(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    radius: usize,
+) {
+    if radius == 0 || width <= 1 || height <= 1 || x >= screen_w || y >= screen_h {
+        return;
+    }
+    let x1 = (x + width).min(screen_w);
+    let y1 = (y + height).min(screen_h);
+    let w = x1 - x;
+    let h = y1 - y;
+    let r = radius.min(w / 2).min(h / 2);
+    if r == 0 {
+        return;
+    }
+
+    let mut scratch = alloc::vec![0u32; w * h];
+    let window_size = (2 * r + 1) as u32;
+
+    // ── Passo 1: Blur Horizontal (de `buf` para `scratch`) ──
+    for ry in 0..h {
+        let buf_row_start = (y + ry) * screen_w + x;
+        let scratch_row_start = ry * w;
+
+        let mut sum_r: u32 = 0;
+        let mut sum_g: u32 = 0;
+        let mut sum_b: u32 = 0;
+
+        for dx in (-(r as isize))..=(r as isize) {
+            let sample_col = if dx < 0 { 0 } else { (dx as usize).min(w - 1) };
+            let pixel = buf[buf_row_start + sample_col];
+            sum_r += (pixel >> 16) & 0xFF;
+            sum_g += (pixel >> 8) & 0xFF;
+            sum_b += pixel & 0xFF;
+        }
+
+        scratch[scratch_row_start] = ((sum_r / window_size) << 16)
+            | ((sum_g / window_size) << 8)
+            | (sum_b / window_size);
+
+        for col in 1..w {
+            let left_col = if col > r { col - r - 1 } else { 0 };
+            let right_col = (col + r).min(w - 1);
+
+            let p_left = buf[buf_row_start + left_col];
+            let p_right = buf[buf_row_start + right_col];
+
+            sum_r = sum_r.saturating_add((p_right >> 16) & 0xFF).saturating_sub((p_left >> 16) & 0xFF);
+            sum_g = sum_g.saturating_add((p_right >> 8) & 0xFF).saturating_sub((p_left >> 8) & 0xFF);
+            sum_b = sum_b.saturating_add(p_right & 0xFF).saturating_sub(p_left & 0xFF);
+
+            scratch[scratch_row_start + col] = ((sum_r / window_size) << 16)
+                | ((sum_g / window_size) << 8)
+                | (sum_b / window_size);
+        }
+    }
+
+    // ── Passo 2: Blur Vertical (de `scratch` de volta para `buf`) ──
+    for rx in 0..w {
+        let mut sum_r: u32 = 0;
+        let mut sum_g: u32 = 0;
+        let mut sum_b: u32 = 0;
+
+        for dy in (-(r as isize))..=(r as isize) {
+            let sample_row = if dy < 0 { 0 } else { (dy as usize).min(h - 1) };
+            let pixel = scratch[sample_row * w + rx];
+            sum_r += (pixel >> 16) & 0xFF;
+            sum_g += (pixel >> 8) & 0xFF;
+            sum_b += pixel & 0xFF;
+        }
+
+        buf[y * screen_w + (x + rx)] = ((sum_r / window_size) << 16)
+            | ((sum_g / window_size) << 8)
+            | (sum_b / window_size);
+
+        for row in 1..h {
+            let top_row = if row > r { row - r - 1 } else { 0 };
+            let bot_row = (row + r).min(h - 1);
+
+            let p_top = scratch[top_row * w + rx];
+            let p_bot = scratch[bot_row * w + rx];
+
+            sum_r = sum_r.saturating_add((p_bot >> 16) & 0xFF).saturating_sub((p_top >> 16) & 0xFF);
+            sum_g = sum_g.saturating_add((p_bot >> 8) & 0xFF).saturating_sub((p_top >> 8) & 0xFF);
+            sum_b = sum_b.saturating_add(p_bot & 0xFF).saturating_sub(p_top & 0xFF);
+
+            buf[(y + row) * screen_w + (x + rx)] = ((sum_r / window_size) << 16)
+                | ((sum_g / window_size) << 8)
+                | (sum_b / window_size);
+        }
+    }
+}
+
+/// Preenche uma superfície acrílica com efeito de vidro fosco (Frosted Glass / Glassmorphism)
+/// Aplica desfoque real no fundo subjacente e mescla com a tonalidade acrílica e cantos arredondados.
+pub fn fill_acrylic_glass(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    radius: usize,
+    tint_color: u32,
+    tint_alpha: u8,
+) {
+    if x >= screen_w || y >= screen_h || width == 0 || height == 0 { return; }
+
+    // 1. Aplica o blur no conteúdo real já desenhado no buffer (wallpaper / janelas inferiores)
+    let blur_r = 4.min(width / 4).min(height / 4).max(1);
+    box_blur_rect(buf, screen_w, screen_h, x, y, width, height, blur_r);
+
+    // 2. Aplica a tonalidade acrílica respeitando os cantos arredondados
+    let r = radius.min(width / 2).min(height / 2);
+    for row_idx in 0..height {
+        let cur_y = y + row_idx;
+        if cur_y >= screen_h { break; }
+
+        let cut = if r > 1 {
+            if row_idx < r {
+                corner_cut(r, row_idx)
+            } else if row_idx >= height - r {
+                corner_cut(r, height - 1 - row_idx)
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+
+        let start_x = x + cut;
+        let end_x = (x + width.saturating_sub(cut)).min(screen_w);
+        if start_x < end_x {
+            let row_start = cur_y * screen_w;
+            for px in start_x..end_x {
+                let blurred = buf[row_start + px];
+                buf[row_start + px] = alpha_blend(blurred, tint_color, tint_alpha);
+            }
+        }
+    }
+}
+
+/// Renderiza uma superfície acrílica adaptativa baseada no CapabilityMode do sistema:
+/// - Basic: Preenchimento plano sólido de altíssima velocidade (0% blur overhead)
+/// - Balanced / Advanced: Frosted Glass com blur real de alta fidelidade visual
+pub fn fill_acrylic_surface(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    radius: usize,
+    tint_color: u32,
+    tint_alpha: u8,
+    mode: CapabilityMode,
+) {
+    match mode {
+        CapabilityMode::Basic => {
+            if radius > 1 {
+                fill_rounded_rect(buf, screen_w, screen_h, x, y, width, height, radius, tint_color);
+            } else {
+                fill_rect(buf, screen_w, screen_h, x, y, width, height, tint_color);
+            }
+        }
+        CapabilityMode::Balanced | CapabilityMode::Advanced => {
+            fill_acrylic_glass(buf, screen_w, screen_h, x, y, width, height, radius, tint_color, tint_alpha);
+        }
+    }
+}
+
 /// Renderiza wallpaper procedural com suporte a múltiplos temas selecionáveis.
 /// wallpaper_id:
 ///   0 = Cyber-Aurora (Padrão: aurora boreal fluida e constelações)
 ///   1 = Midnight Minimalist (Azul noite profundo e microestrelas discretas)
 ///   2 = Techno Grid (Horizonte synthwave com grade de perspectiva)
+///   3 = Solaris Horizon (Crepúsculo solar quente com corona e raios de horizonte)
+///   4 = Obsidian Glass (Ardósia de obsidiana profunda com trilhas de circuito digital)
 pub fn render_wallpaper(
     buf: &mut [u32],
     screen_w: usize,
@@ -612,6 +797,98 @@ pub fn render_wallpaper(
                 draw_line(buf, screen_w, screen_h, 0, gh_y as isize, screen_w as isize, gh_y as isize, 0x0017_2554);
                 step += 7;
                 gh_y += step;
+            }
+        }
+        3 => {
+            // 3. Solaris Horizon (Pôr-do-sol crepuscular tecnológico com corona e raios solares)
+            let horizon_y = (screen_h * 58) / 100;
+            for y in 0..screen_h {
+                let row_start = y * screen_w;
+                if y < horizon_y {
+                    let factor = (y * 256) / horizon_y;
+                    let r = 16 + ((70 * factor) / 256);
+                    let g = 12 + ((28 * factor) / 256);
+                    let b = 32 + ((18 * factor) / 256);
+                    let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+                    for x in 0..screen_w {
+                        buf[row_start + x] = row_color;
+                    }
+                } else {
+                    let dist = y - horizon_y;
+                    let factor = (dist * 256) / (screen_h - horizon_y);
+                    let r = 24usize.saturating_sub((16 * factor) / 256);
+                    let g = 16usize.saturating_sub((10 * factor) / 256);
+                    let b = 28usize.saturating_sub((18 * factor) / 256);
+                    let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+                    for x in 0..screen_w {
+                        buf[row_start + x] = row_color;
+                    }
+                }
+            }
+
+            // Corona solar semi-elíptica no horizonte
+            let sun_cx = screen_w / 2;
+            let sun_r = 45usize.min(screen_w / 8);
+            for dy in 0..sun_r {
+                let sy = horizon_y.saturating_sub(dy);
+                let half_span = isqrt((sun_r * sun_r).saturating_sub(dy * dy));
+                let x0 = sun_cx.saturating_sub(half_span);
+                let x1 = (sun_cx + half_span).min(screen_w);
+                let glow_alpha = (180usize.saturating_sub((dy * 160) / sun_r)) as u8;
+                for px in x0..x1 {
+                    let cur = buf[sy * screen_w + px];
+                    buf[sy * screen_w + px] = alpha_blend(cur, COLOR_AMBER, glow_alpha);
+                }
+            }
+
+            // Faixas de neon dourado e magenta no horizonte
+            for x in 0..screen_w {
+                draw_pixel(buf, screen_w, screen_h, x, horizon_y, COLOR_AMBER);
+                if horizon_y > 0 {
+                    draw_pixel(buf, screen_w, screen_h, x, horizon_y - 1, 0x00F9_7316);
+                }
+            }
+        }
+        4 => {
+            // 4. Obsidian Glass (Ardósia de obsidiana profunda com matriz de circuitos)
+            for y in 0..screen_h {
+                let factor = (y * 256) / screen_h;
+                let r = 7 + ((10 * factor) / 256);
+                let g = 9 + ((12 * factor) / 256);
+                let b = 15 + ((20 * factor) / 256);
+                let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+                let row_start = y * screen_w;
+                for x in 0..screen_w {
+                    buf[row_start + x] = row_color;
+                }
+            }
+
+            // Trilhas de circuitos procedurais
+            let step = 80;
+            let mut gx = step;
+            while gx < screen_w {
+                draw_line(buf, screen_w, screen_h, gx as isize, 0, gx as isize, screen_h as isize, 0x0017_2033);
+                gx += step;
+            }
+            let mut gy = step;
+            while gy < screen_h {
+                draw_line(buf, screen_w, screen_h, 0, gy as isize, screen_w as isize, gy as isize, 0x0017_2033);
+                gy += step;
+            }
+
+            // Nós de matriz luminosos nos cruzamentos
+            let mut ny = step;
+            while ny < screen_h {
+                let mut nx = step;
+                while nx < screen_w {
+                    if ((nx / step) + (ny / step)) % 2 == 0 {
+                        draw_pixel(buf, screen_w, screen_h, nx, ny, COLOR_CYAN_NEON);
+                        if nx + 1 < screen_w { draw_pixel(buf, screen_w, screen_h, nx + 1, ny, 0x001E_3A5F); }
+                        if ny + 1 < screen_h { draw_pixel(buf, screen_w, screen_h, nx, ny + 1, 0x001E_3A5F); }
+                    }
+                    nx += step;
+                }
+                ny += step;
             }
         }
         _ => {

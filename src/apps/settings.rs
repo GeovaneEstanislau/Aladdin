@@ -82,7 +82,7 @@ impl SettingsApp {
                 }
             } else if let Some(val) = line.strip_prefix("WALLPAPER=") {
                 if let Ok(w) = val.parse::<u8>() {
-                    if w <= 2 {
+                    if w <= 4 {
                         self.wallpaper_id = w;
                     }
                 }

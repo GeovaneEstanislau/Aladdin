@@ -32,6 +32,12 @@ pub struct Window {
     pub can_close: bool,
     pub close_requested: bool,
     pub owner_pid: Option<usize>,
+    pub anim_x: u16,
+    pub anim_y: u16,
+    pub anim_w: u16,
+    pub anim_h: u16,
+    pub anim_ticks_remaining: u8,
+    pub anim_total_ticks: u8,
 }
 
 impl Window {
@@ -70,6 +76,12 @@ impl Window {
             can_close: true,
             close_requested: false,
             owner_pid: None,
+            anim_x: x as u16,
+            anim_y: y as u16,
+            anim_w: width as u16,
+            anim_h: height as u16,
+            anim_ticks_remaining: 0,
+            anim_total_ticks: 0,
         }
     }
 
@@ -93,6 +105,58 @@ impl Window {
 
     pub fn bounds(&self) -> DirtyRect {
         DirtyRect::new(self.x, self.y, self.width, self.height)
+    }
+
+    pub fn render_x(&self) -> usize {
+        if self.anim_ticks_remaining > 0 { self.anim_x as usize } else { self.x }
+    }
+
+    pub fn render_y(&self) -> usize {
+        if self.anim_ticks_remaining > 0 { self.anim_y as usize } else { self.y }
+    }
+
+    pub fn render_width(&self) -> usize {
+        if self.anim_ticks_remaining > 0 { self.anim_w as usize } else { self.width }
+    }
+
+    pub fn render_height(&self) -> usize {
+        if self.anim_ticks_remaining > 0 { self.anim_h as usize } else { self.height }
+    }
+
+    pub fn render_bounds(&self) -> DirtyRect {
+        DirtyRect::new(self.render_x(), self.render_y(), self.render_width(), self.render_height())
+    }
+
+    pub fn start_transition(&mut self, prev_x: usize, prev_y: usize, prev_w: usize, prev_h: usize, ticks: u8) {
+        self.anim_x = prev_x.min(u16::MAX as usize) as u16;
+        self.anim_y = prev_y.min(u16::MAX as usize) as u16;
+        self.anim_w = prev_w.min(u16::MAX as usize) as u16;
+        self.anim_h = prev_h.min(u16::MAX as usize) as u16;
+        self.anim_ticks_remaining = ticks;
+        self.anim_total_ticks = ticks;
+    }
+
+    pub fn tick_animation(&mut self) -> bool {
+        if self.anim_ticks_remaining == 0 {
+            return false;
+        }
+        self.anim_ticks_remaining -= 1;
+        if self.anim_ticks_remaining == 0 {
+            self.anim_x = self.x as u16;
+            self.anim_y = self.y as u16;
+            self.anim_w = self.width as u16;
+            self.anim_h = self.height as u16;
+        } else {
+            let total = self.anim_total_ticks as usize;
+            let current_step = total.saturating_sub(self.anim_ticks_remaining as usize);
+            if total > 0 {
+                self.anim_x = ease_out_lerp(self.anim_x as usize, self.x, current_step, total) as u16;
+                self.anim_y = ease_out_lerp(self.anim_y as usize, self.y, current_step, total) as u16;
+                self.anim_w = ease_out_lerp(self.anim_w as usize, self.width, current_step, total) as u16;
+                self.anim_h = ease_out_lerp(self.anim_h as usize, self.height, current_step, total) as u16;
+            }
+        }
+        true
     }
 
     /// Retorna a região de recorte da área de cliente (interior da janela)
@@ -146,6 +210,7 @@ impl Window {
 
     pub fn toggle_maximize(&mut self, screen_w: usize, screen_h: usize, top_panel_h: usize, dock_h: usize) -> DirtyRect {
         if !self.can_maximize { return self.bounds(); }
+        let (old_x, old_y, old_w, old_h) = (self.render_x(), self.render_y(), self.render_width(), self.render_height());
         let old_rect = self.bounds();
         if self.is_maximized || self.is_snapped_left || self.is_snapped_right {
             self.x = self.saved_x;
@@ -169,6 +234,7 @@ impl Window {
             self.is_snapped_left = false;
             self.is_snapped_right = false;
         }
+        self.start_transition(old_x, old_y, old_w, old_h, 4);
         old_rect.union(&self.bounds())
     }
 
@@ -178,6 +244,7 @@ impl Window {
 
     pub fn snap_left(&mut self, screen_w: usize, screen_h: usize, top_panel_h: usize, dock_h: usize) -> DirtyRect {
         if !self.can_maximize { return self.bounds(); }
+        let (old_x, old_y, old_w, old_h) = (self.render_x(), self.render_y(), self.render_width(), self.render_height());
         let old_rect = self.bounds();
         if !self.is_maximized && !self.is_snapped_left && !self.is_snapped_right {
             self.saved_x = self.x;
@@ -193,11 +260,13 @@ impl Window {
         self.is_snapped_left = true;
         self.is_snapped_right = false;
         self.is_maximized = false;
+        self.start_transition(old_x, old_y, old_w, old_h, 4);
         old_rect.union(&self.bounds())
     }
 
     pub fn snap_right(&mut self, screen_w: usize, screen_h: usize, top_panel_h: usize, dock_h: usize) -> DirtyRect {
         if !self.can_maximize { return self.bounds(); }
+        let (old_x, old_y, old_w, old_h) = (self.render_x(), self.render_y(), self.render_width(), self.render_height());
         let old_rect = self.bounds();
         if !self.is_maximized && !self.is_snapped_left && !self.is_snapped_right {
             self.saved_x = self.x;
@@ -214,10 +283,12 @@ impl Window {
         self.is_snapped_left = false;
         self.is_snapped_right = true;
         self.is_maximized = false;
+        self.start_transition(old_x, old_y, old_w, old_h, 4);
         old_rect.union(&self.bounds())
     }
 
     pub fn restore_snap(&mut self) -> DirtyRect {
+        let (old_x, old_y, old_w, old_h) = (self.render_x(), self.render_y(), self.render_width(), self.render_height());
         let old_rect = self.bounds();
         if self.is_snapped_left || self.is_snapped_right || self.is_maximized {
             self.x = self.saved_x;
@@ -228,6 +299,22 @@ impl Window {
             self.is_snapped_right = false;
             self.is_maximized = false;
         }
+        self.start_transition(old_x, old_y, old_w, old_h, 4);
         old_rect.union(&self.bounds())
     }
+}
+
+/// Interpolação suave com desaceleração (Quadratic Ease-Out) para inteiros (#![no_std])
+#[inline]
+pub fn ease_out_lerp(start: usize, end: usize, step: usize, total: usize) -> usize {
+    if total == 0 || step >= total {
+        return end;
+    }
+    let s = start as isize;
+    let e = end as isize;
+    let diff = e - s;
+    let factor_num = (2 * step * total).saturating_sub(step * step) as isize;
+    let factor_den = (total * total) as isize;
+    let delta = (diff * factor_num) / factor_den;
+    (s + delta).max(0) as usize
 }

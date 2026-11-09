@@ -220,6 +220,18 @@ impl WindowManager {
         None
     }
 
+    pub fn tick_animations(&mut self) -> bool {
+        let mut any_animated = false;
+        for opt_win in &mut self.windows {
+            if let Some(win) = opt_win.as_mut() {
+                if win.tick_animation() {
+                    any_animated = true;
+                }
+            }
+        }
+        any_animated
+    }
+
     pub fn render_snap_preview(
         &self,
         buf: &mut [u32],
@@ -246,15 +258,20 @@ impl WindowManager {
         is_active: bool,
         mode: CapabilityMode,
     ) {
+        let rx = win.render_x();
+        let ry = win.render_y();
+        let rw = win.render_width();
+        let rh = win.render_height();
+
         let title_color = if is_active { COLOR_TOPPANEL } else { 0x0011_1827 };
         let border_color = if is_active { COLOR_BORDER_ACT } else { COLOR_BORDER };
 
         // Sombras projetadas curvas conforme CapabilityMode
         if mode == CapabilityMode::Advanced {
-            draw_drop_shadow_rounded(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, 6, 4, 0x0005_0710);
-            draw_drop_shadow_rounded(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, 6, 2, 0x000A_0F1D);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 6, 4, 0x0005_0710);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 6, 2, 0x000A_0F1D);
         } else if mode == CapabilityMode::Balanced && is_active {
-            draw_drop_shadow_rounded(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, 6, 3, 0x000A_0F1D);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 6, 3, 0x000A_0F1D);
         }
 
         // Corpo da janela com cantos inferiores arredondados (R=6)
@@ -262,41 +279,41 @@ impl WindowManager {
             buf,
             screen_w,
             screen_h,
-            win.x,
-            win.y,
-            win.width,
-            win.height,
+            rx,
+            ry,
+            rw,
+            rh,
             6,
             COLOR_CARD,
         );
 
         // Barra de título com cantos superiores arredondados (R=6)
-        fill_rounded_top(buf, screen_w, screen_h, win.x, win.y, win.width, TITLE_BAR_HEIGHT, 6, title_color);
+        fill_rounded_top(buf, screen_w, screen_h, rx, ry, rw, TITLE_BAR_HEIGHT, 6, title_color);
 
         // Borda externa arredondada de precisão
         draw_rounded_outline(
             buf,
             screen_w,
             screen_h,
-            win.x,
-            win.y,
-            win.width,
-            win.height,
+            rx,
+            ry,
+            rw,
+            rh,
             6,
             border_color,
         );
 
         // Bisel superior sutil (1px highlight para efeito acrílico moderno)
-        if win.width > 12 {
+        if rw > 12 {
             let bevel_color = if is_active { 0x0047_5569 } else { 0x0024_3042 };
             draw_line(
                 buf,
                 screen_w,
                 screen_h,
-                (win.x + 6) as isize,
-                win.y as isize,
-                (win.x + win.width.saturating_sub(6)) as isize,
-                win.y as isize,
+                (rx + 6) as isize,
+                ry as isize,
+                (rx + rw.saturating_sub(6)) as isize,
+                ry as isize,
                 bevel_color,
             );
         }
@@ -307,10 +324,10 @@ impl WindowManager {
                 buf,
                 screen_w,
                 screen_h,
-                win.x as isize,
-                (win.y + TITLE_BAR_HEIGHT) as isize,
-                (win.x + win.width) as isize,
-                (win.y + TITLE_BAR_HEIGHT) as isize,
+                rx as isize,
+                (ry + TITLE_BAR_HEIGHT) as isize,
+                (rx + rw) as isize,
+                (ry + TITLE_BAR_HEIGHT) as isize,
                 COLOR_CYAN,
             );
             if mode == CapabilityMode::Advanced {
@@ -318,42 +335,42 @@ impl WindowManager {
                     buf,
                     screen_w,
                     screen_h,
-                    win.x as isize,
-                    (win.y + TITLE_BAR_HEIGHT + 1) as isize,
-                    (win.x + win.width) as isize,
-                    (win.y + TITLE_BAR_HEIGHT + 1) as isize,
+                    rx as isize,
+                    (ry + TITLE_BAR_HEIGHT + 1) as isize,
+                    (rx + rw) as isize,
+                    (ry + TITLE_BAR_HEIGHT + 1) as isize,
                     COLOR_PURPLE,
                 );
             }
         }
 
-        // Título da janela
+        // Título da janela com tipografia nítida antialiased
         let text_color = if is_active { COLOR_TEXT_PRI } else { COLOR_TEXT_MUTED };
-        draw_string(buf, screen_w, screen_h, win.title_str(), win.x + 10, win.y + 4, text_color, Some(title_color));
+        draw_string_antialiased(buf, screen_w, screen_h, win.title_str(), rx + 10, ry + 4, text_color, Some(title_color));
 
         // Trio de botões semáforo arredondados (Traffic-Light / elementary OS)
-        let btn_y = win.y + 4;
+        let btn_y = ry + 4;
 
         if win.can_minimize {
-            let btn_min_x = win.x + win.width.saturating_sub(64);
+            let btn_min_x = rx + rw.saturating_sub(64);
             fill_rounded_rect(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, 4, COLOR_AMBER);
             draw_rounded_outline(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, 4, 0x00D9_7706);
-            draw_char(buf, screen_w, screen_h, b'-', btn_min_x + 4, btn_y, COLOR_WHITE, Some(COLOR_AMBER));
+            draw_char_antialiased(buf, screen_w, screen_h, b'-', btn_min_x + 4, btn_y, COLOR_WHITE, Some(COLOR_AMBER), None);
         }
 
         if win.can_maximize {
-            let btn_max_x = win.x + win.width.saturating_sub(44);
+            let btn_max_x = rx + rw.saturating_sub(44);
             let max_char = if win.is_maximized || win.is_snapped_left || win.is_snapped_right { b'^' } else { b'+' };
             fill_rounded_rect(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 4, COLOR_EMERALD);
             draw_rounded_outline(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 4, 0x0016_A34A);
-            draw_char(buf, screen_w, screen_h, max_char, btn_max_x + 4, btn_y, COLOR_WHITE, Some(COLOR_EMERALD));
+            draw_char_antialiased(buf, screen_w, screen_h, max_char, btn_max_x + 4, btn_y, COLOR_WHITE, Some(COLOR_EMERALD), None);
         }
 
         if win.can_close {
-            let btn_close_x = win.x + win.width.saturating_sub(24);
+            let btn_close_x = rx + rw.saturating_sub(24);
             fill_rounded_rect(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, 4, COLOR_RUBY);
             draw_rounded_outline(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, 4, 0x00DC_2626);
-            draw_char(buf, screen_w, screen_h, b'X', btn_close_x + 4, btn_y, COLOR_WHITE, Some(COLOR_RUBY));
+            draw_char_antialiased(buf, screen_w, screen_h, b'X', btn_close_x + 4, btn_y, COLOR_WHITE, Some(COLOR_RUBY), None);
         }
     }
 }

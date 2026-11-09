@@ -45,3 +45,29 @@ pub const COLOR_WHITE: u32      = 0x00FF_FFFF;
 pub const COLOR_BLACK: u32      = 0x0000_0000;
 pub const COLOR_BTN_BG: u32     = COLOR_BLUE_PRIMARY;
 pub const COLOR_SHADOW: u32     = 0x0004_060A; // Sombra difusa de janela
+
+// ── Funções Utilitárias de Mistura de Cores (Alpha Blending) ─────────────────
+/// Mescla a cor de primeiro plano (`fg`) sobre o fundo (`bg`) com fator `alpha` (0..=255).
+/// Operação totalmente inteira e determinística, ideal para sistemas no_std e glassmorphism.
+#[inline]
+pub fn alpha_blend(bg: u32, fg: u32, alpha: u8) -> u32 {
+    if alpha == 0 { return bg; }
+    if alpha == 255 { return fg; }
+
+    let a = alpha as u32;
+    let inv_a = 255 - a;
+
+    let bg_r = (bg >> 16) & 0xFF;
+    let bg_g = (bg >> 8) & 0xFF;
+    let bg_b = bg & 0xFF;
+
+    let fg_r = (fg >> 16) & 0xFF;
+    let fg_g = (fg >> 8) & 0xFF;
+    let fg_b = fg & 0xFF;
+
+    let out_r = (fg_r * a + bg_r * inv_a) / 255;
+    let out_g = (fg_g * a + bg_g * inv_a) / 255;
+    let out_b = (fg_b * a + bg_b * inv_a) / 255;
+
+    (out_r << 16) | (out_g << 8) | out_b
+}

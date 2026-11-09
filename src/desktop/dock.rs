@@ -24,8 +24,8 @@ pub fn render_dock(
     // 1. Sombra suave de elevação (Drop Shadow)
     draw_drop_shadow_rounded(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, 12, 3, COLOR_SHADOW);
 
-    // 2. Superfície flutuante translúcida do Dock (Cápsula elegante R=12)
-    fill_rounded_rect(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, 12, COLOR_DOCK);
+    // 2. Superfície flutuante translúcida do Dock com Desfoque Real (Frosted Glass R=12)
+    fill_acrylic_glass(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, 12, COLOR_DOCK, 195);
     draw_rounded_outline(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, 12, COLOR_BORDER_ACT);
 
     let slots = [
@@ -64,7 +64,7 @@ pub fn render_dock(
         let label_w = label.len() * 8;
         let text_x = slot_x + (88usize.saturating_sub(label_w)) / 2;
         let text_color = if is_hover { COLOR_WHITE } else { COLOR_TEXT_PRI };
-        draw_string(buf, screen_w, screen_h, label, text_x, dock_y + 12, text_color, Some(slot_bg));
+        draw_string_antialiased(buf, screen_w, screen_h, label, text_x, dock_y + 12, text_color, Some(slot_bg));
 
         // Indicador de app ativa (elementary OS dot / line indicator)
         if win_id != usize::MAX {
@@ -91,6 +91,6 @@ pub fn render_dock(
         draw_drop_shadow_rounded(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, 4, 2, COLOR_SHADOW);
         fill_rounded_rect(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, 4, COLOR_SURFACE_L0);
         draw_rounded_outline(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, 4, COLOR_CYAN_NEON);
-        draw_string(buf, screen_w, screen_h, tip_text, tip_x + 8, tip_y + 4, COLOR_TEXT_PRI, Some(COLOR_SURFACE_L0));
+        draw_string_antialiased(buf, screen_w, screen_h, tip_text, tip_x + 8, tip_y + 4, COLOR_TEXT_PRI, Some(COLOR_SURFACE_L0));
     }
 }

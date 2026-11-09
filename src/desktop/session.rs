@@ -1129,13 +1129,15 @@ impl AladdinSession {
             let (mx, my, buttons) = poll_mouse();
             let current_ticks = sys.stats().current_tick;
 
+            let anim_active = self.wm.tick_animations();
+
             let (dragging_any, _drag_damage) = self.handle_mouse(mx, my, buttons, sys, vfs, proc_host, screen_w, screen_h);
 
             let mouse_moved = (mx != last_mx) || (my != last_my);
             let button_changed = buttons != last_btn;
             let time_changed = current_ticks.saturating_sub(last_ticks) >= 50; // Atualiza a cada 500ms
 
-            let need_scene_redraw = button_changed || key_pressed || dragging_any || time_changed || self.client_damaged;
+            let need_scene_redraw = button_changed || key_pressed || dragging_any || time_changed || anim_active || self.client_damaged;
 
             if need_scene_redraw {
                 self.client_damaged = false;

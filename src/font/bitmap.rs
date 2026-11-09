@@ -96,6 +96,184 @@ pub fn draw_string_clipped(
     }
 }
 
+// ── Tipografia Nítida com Suavização de Bordas (Antialiasing & Subpixel) ──────
+
+#[inline]
+fn is_glyph_bit_set(glyph: &[u8; 8], x: isize, y: isize) -> bool {
+    if x < 0 || x >= 8 || y < 0 || y >= 8 {
+        false
+    } else {
+        (glyph[y as usize] & (1 << (7 - x as usize))) != 0
+    }
+}
+
+/// Renderiza um caractere com suavização de bordas (antialiasing subpixel por matriz de conectividade).
+/// Elimina serrilhados e degraus visuais através de interpolação alpha das arestas com o fundo.
+pub fn draw_char_antialiased(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    ch: u8,
+    x: usize,
+    y: usize,
+    fg: u32,
+    bg: Option<u32>,
+    clip: Option<&ClipRect>,
+) {
+    if x >= screen_w || y >= screen_h { return; }
+    let glyph = get_glyph(ch);
+    let max_y = (y + FONT_HEIGHT).min(screen_h);
+    let max_x = (x + FONT_WIDTH).min(screen_w);
+
+    for y_offset in 0..8 {
+        let cy = y + y_offset;
+        if cy >= max_y { break; }
+        let row_ptr = cy * screen_w;
+
+        for x_offset in 0..8 {
+            let cx = x + x_offset;
+            if cx >= max_x { break; }
+
+            if let Some(c) = clip {
+                if !c.contains_pixel(cx, cy) { continue; }
+            }
+
+            let xo = x_offset as isize;
+            let yo = y_offset as isize;
+            let center = is_glyph_bit_set(glyph, xo, yo);
+
+            let alpha = if center {
+                // Píxel pertencente ao traço do glifo: analisa vizinhança ortogonal
+                let mut ortho = 0;
+                if is_glyph_bit_set(glyph, xo - 1, yo) { ortho += 1; }
+                if is_glyph_bit_set(glyph, xo + 1, yo) { ortho += 1; }
+                if is_glyph_bit_set(glyph, xo, yo - 1) { ortho += 1; }
+                if is_glyph_bit_set(glyph, xo, yo + 1) { ortho += 1; }
+
+                match ortho {
+                    4 => 255,
+                    3 => 235,
+                    2 => 210,
+                    _ => 185,
+                }
+            } else {
+                // Píxel de borda externa: halo de suavização
+                let mut ortho = 0;
+                if is_glyph_bit_set(glyph, xo - 1, yo) { ortho += 1; }
+                if is_glyph_bit_set(glyph, xo + 1, yo) { ortho += 1; }
+                if is_glyph_bit_set(glyph, xo, yo - 1) { ortho += 1; }
+                if is_glyph_bit_set(glyph, xo, yo + 1) { ortho += 1; }
+
+                let mut diag = 0;
+                if is_glyph_bit_set(glyph, xo - 1, yo - 1) { diag += 1; }
+                if is_glyph_bit_set(glyph, xo + 1, yo - 1) { diag += 1; }
+                if is_glyph_bit_set(glyph, xo - 1, yo + 1) { diag += 1; }
+                if is_glyph_bit_set(glyph, xo + 1, yo + 1) { diag += 1; }
+
+                if ortho >= 2 {
+                    85
+                } else if ortho == 1 {
+                    45
+                } else if diag >= 1 {
+                    25
+                } else {
+                    0
+                }
+            };
+
+            if alpha > 0 {
+                let current_bg = buf[row_ptr + cx];
+                let base_color = bg.unwrap_or(current_bg);
+                buf[row_ptr + cx] = crate::compositor::color::alpha_blend(base_color, fg, alpha);
+            } else if let Some(bg_color) = bg {
+                buf[row_ptr + cx] = bg_color;
+            }
+        }
+    }
+}
+
+/// Renderiza texto em linha com antialiasing contínuo
+pub fn draw_string_antialiased(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    text: &str,
+    x: usize,
+    y: usize,
+    fg: u32,
+    bg: Option<u32>,
+) {
+    draw_string_antialiased_clipped(buf, screen_w, screen_h, text, x, y, fg, bg, None);
+}
+
+/// Renderiza texto com antialiasing respeitando a janela de recorte (clipping)
+pub fn draw_string_antialiased_clipped(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    text: &str,
+    mut x: usize,
+    y: usize,
+    fg: u32,
+    bg: Option<u32>,
+    clip: Option<&ClipRect>,
+) {
+    for b in text.bytes() {
+        if x + FONT_WIDTH > screen_w { break; }
+        draw_char_antialiased(buf, screen_w, screen_h, b, x, y, fg, bg, clip);
+        x += FONT_WIDTH;
+    }
+}
+
+/// Renderiza texto nítido escalonado 2x (16x16) com suavização de curvas para títulos e cabeçalhos
+pub fn draw_string_antialiased_2x(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    text: &str,
+    mut x: usize,
+    y: usize,
+    fg: u32,
+    bg: Option<u32>,
+) {
+    let scale = 2;
+    for b in text.bytes() {
+        if x + FONT_WIDTH * scale > screen_w { break; }
+        let glyph = get_glyph(b);
+
+        for gy in 0..8 {
+            let cy_base = y + gy * scale;
+            if cy_base >= screen_h { break; }
+
+            for gx in 0..8 {
+                let cx_base = x + gx * scale;
+                if cx_base >= screen_w { break; }
+
+                let is_set = (glyph[gy] & (1 << (7 - gx))) != 0;
+                let color = if is_set { fg } else {
+                    match bg {
+                        Some(bg_col) => bg_col,
+                        None => continue,
+                    }
+                };
+
+                for dy in 0..scale {
+                    let py = cy_base + dy;
+                    if py >= screen_h { break; }
+                    let r_start = py * screen_w;
+                    for dx in 0..scale {
+                        let px = cx_base + dx;
+                        if px < screen_w {
+                            buf[r_start + px] = color;
+                        }
+                    }
+                }
+            }
+        }
+        x += FONT_WIDTH * scale;
+    }
+}
+
 pub fn draw_label_and_num(
     buf: &mut [u32],
     screen_w: usize,
