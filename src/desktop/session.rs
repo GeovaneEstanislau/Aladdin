@@ -61,6 +61,8 @@ pub struct AladdinSession {
     pub client_damaged: bool,
     pub browser_pid: Option<usize>,
     pub browser_win_id: Option<usize>,
+    pub wallpaper_anim_frame: u64,
+    pub last_user_activity_tick: u64,
 }
 
 impl AladdinSession {
@@ -90,6 +92,8 @@ impl AladdinSession {
             client_damaged: false,
             browser_pid: None,
             browser_win_id: None,
+            wallpaper_anim_frame: 0,
+            last_user_activity_tick: 0,
         };
 
         session.init_default_windows();
@@ -343,7 +347,13 @@ impl AladdinSession {
         let stats = sys.stats();
 
         // 1. Wallpaper procedural, domínio público ou vídeo animado com suporte a múltiplos temas e persistência
-        render_wallpaper(buf, screen_w, screen_h, self.mode, self.settings.wallpaper_id, stats.current_tick);
+        // Para motion wallpapers (>= 8), utiliza wallpaper_anim_frame acumulado (garante continuidade sem saltos temporais)
+        let anim_tick = if self.settings.wallpaper_id >= 8 {
+            self.wallpaper_anim_frame.wrapping_mul(3)
+        } else {
+            stats.current_tick
+        };
+        render_wallpaper(buf, screen_w, screen_h, self.mode, self.settings.wallpaper_id, anim_tick);
 
         // 2. Guia de recorte / Snap Preview ativo (se arrastando janela para as bordas)
         if let Some(ref snap) = self.active_snap_preview {
@@ -1226,7 +1236,13 @@ impl AladdinSession {
             let button_changed = buttons != last_btn;
             let time_changed = current_ticks.saturating_sub(last_ticks) >= 50; // Atualiza a cada 500ms
 
-            // Animacao de Motion Wallpaper (Videos) a ~30 FPS com pausa inteligente se o desktop estiver ocluso
+            // Rastreamento de atividade do usuário (previne execução contínua se ocioso por mais de 60s)
+            if mouse_moved || button_changed || key_pressed || dragging_any || self.client_damaged {
+                self.last_user_activity_tick = current_ticks;
+            }
+            let is_desktop_idle = current_ticks.saturating_sub(self.last_user_activity_tick) > 6000;
+
+            // Animacao de Motion Wallpaper (Videos) a ~30 FPS com pausa inteligente se o desktop estiver ocluso ou ocioso
             let is_motion_wp = self.settings.wallpaper_id >= 8;
             let is_desktop_occluded = self.wm.windows.iter().any(|w_opt| {
                 if let Some(w) = w_opt {
@@ -1235,9 +1251,10 @@ impl AladdinSession {
                     false
                 }
             });
-            let motion_tick = is_motion_wp && !is_desktop_occluded && current_ticks.saturating_sub(last_motion_ticks) >= 3;
+            let motion_tick = is_motion_wp && !is_desktop_occluded && !is_desktop_idle && current_ticks.saturating_sub(last_motion_ticks) >= 3;
             if motion_tick {
                 last_motion_ticks = current_ticks;
+                self.wallpaper_anim_frame = self.wallpaper_anim_frame.wrapping_add(1);
             }
 
             let need_scene_redraw = button_changed || key_pressed || dragging_any || time_changed || anim_active || self.client_damaged || motion_tick;

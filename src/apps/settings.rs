@@ -32,8 +32,12 @@ impl SettingsApp {
             CapabilityMode::Advanced => 2,
         };
 
-        let mut buf = [0u8; 160];
+        let mut buf = [0u8; 192];
         let mut len = 0;
+
+        let header = b"# ALADDIN_CONFIG_V1\n";
+        buf[..header.len()].copy_from_slice(header);
+        len += header.len();
 
         let prefix_mode = b"MODE=";
         buf[len..len + prefix_mode.len()].copy_from_slice(prefix_mode);

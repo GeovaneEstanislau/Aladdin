@@ -2526,3 +2526,126 @@ fn test_wallpaper_dynamic_and_audio_settings() {
     assert_eq!(app2.wallpaper_audio_enabled, true);
     assert_eq!(app2.wallpaper_audio_volume, 70);
 }
+
+#[test]
+fn test_settings_corrupted_file_recovery_and_fuzzing() {
+    use aladdin::apps::settings::SettingsApp;
+    use aladdin::contracts::system::CapabilityMode;
+    use aladdin::contracts::vfs::VfsHost;
+
+    struct FuzzVfs {
+        payload: std::cell::RefCell<Vec<u8>>,
+    }
+    impl VfsHost for FuzzVfs {
+        fn create_file(&self, _path: &str) -> Result<(), ()> { Ok(()) }
+        fn readdir(&self, _path: &str, _cb: &mut dyn FnMut(&str, bool, bool, bool)) {}
+        fn read_file(&self, _path: &str, buf: &mut [u8]) -> Result<usize, ()> {
+            let p = self.payload.borrow();
+            let len = p.len().min(buf.len());
+            buf[..len].copy_from_slice(&p[..len]);
+            Ok(len)
+        }
+        fn write_file(&self, _path: &str, buf: &[u8]) -> Result<(), ()> {
+            *self.payload.borrow_mut() = buf.to_vec();
+            Ok(())
+        }
+        fn remove_file(&self, _path: &str) -> Result<(), ()> { Ok(()) }
+    }
+
+    let fuzz_vfs = FuzzVfs { payload: std::cell::RefCell::new(Vec::new()) };
+
+    // Cenário 1: Arquivo completamente vazio (0 bytes)
+    *fuzz_vfs.payload.borrow_mut() = vec![];
+    let mut app = SettingsApp::new();
+    assert_eq!(app.load_from_vfs(&fuzz_vfs), None);
+    assert_eq!(app.wallpaper_id, 0); // Padrão preservado
+    assert_eq!(app.wallpaper_audio_volume, 40);
+
+    // Cenário 2: Bytes binários arbitrários (não-UTF8)
+    *fuzz_vfs.payload.borrow_mut() = vec![0xFF, 0xFE, 0xAA, 0x00, 0x12, 0x88, 0x99];
+    let mut app = SettingsApp::new();
+    assert_eq!(app.load_from_vfs(&fuzz_vfs), None);
+    assert_eq!(app.wallpaper_id, 0);
+
+    // Cenário 3: Chaves truncadas e valores fora dos limites válidos
+    let corrupted_text = b"# ALADDIN_CONFIG_V1\nMODE=99\nWALLPAPER=255\nWALLPAPER_AUDIO=abc\nWALLPAPER_VOL=999\nGARBAGE_LINE\n";
+    *fuzz_vfs.payload.borrow_mut() = corrupted_text.to_vec();
+    let mut app = SettingsApp::new();
+    let mode = app.load_from_vfs(&fuzz_vfs);
+    assert_eq!(mode, None); // Mode 99 é inválido, então retorna None
+    assert_eq!(app.wallpaper_id, 0); // Wallpaper 255 é rejeitado (>11), mantendo 0
+    assert_eq!(app.wallpaper_audio_enabled, false); // "abc" falha no parse, mantendo false
+    assert_eq!(app.wallpaper_audio_volume, 40); // 999 excede u8 e falha no parse, mantendo o padrão seguro 40
+
+    // Cenário 3b: Valor válido de u8 mas acima de 100 (ex: 150) é saturado com segurança para 100
+    let clamp_text = b"WALLPAPER_VOL=150\n";
+    *fuzz_vfs.payload.borrow_mut() = clamp_text.to_vec();
+    let mut app_clamp = SettingsApp::new();
+    app_clamp.load_from_vfs(&fuzz_vfs);
+    assert_eq!(app_clamp.wallpaper_audio_volume, 100);
+
+    // Cenário 4: Arquivo truncado no meio de uma linha
+    let partial_text = b"# ALADDIN_CONFIG_V1\nMODE=1\nWALLP";
+    *fuzz_vfs.payload.borrow_mut() = partial_text.to_vec();
+    let mut app = SettingsApp::new();
+    let mode = app.load_from_vfs(&fuzz_vfs);
+    assert_eq!(mode, Some(CapabilityMode::Balanced));
+    assert_eq!(app.wallpaper_id, 0);
+}
+
+#[test]
+fn test_wallpaper_continuity_and_occlusion_pause() {
+    use aladdin::desktop::session::AladdinSession;
+
+    let mut session = AladdinSession::new();
+    assert_eq!(session.wallpaper_anim_frame, 0);
+    assert_eq!(session.last_user_activity_tick, 0);
+
+    // Seleciona wallpaper de movimento (ID 8 = Matrix Rain)
+    session.settings.wallpaper_id = 8;
+
+    // Simula 10 ticks de animação não oclusa
+    for _ in 0..10 {
+        session.wallpaper_anim_frame = session.wallpaper_anim_frame.wrapping_add(1);
+    }
+    assert_eq!(session.wallpaper_anim_frame, 10);
+
+    // Abre janela 0 (Monitor) maximizada cobrindo o desktop
+    if let Some(w) = session.wm.windows[0].as_mut() {
+        w.is_open = true;
+        w.is_minimized = false;
+        w.is_maximized = true;
+    }
+
+    // Verifica detecção de oclusão do desktop
+    let is_desktop_occluded = session.wm.windows.iter().any(|w_opt| {
+        if let Some(w) = w_opt {
+            w.is_open && !w.is_minimized && w.is_maximized
+        } else {
+            false
+        }
+    });
+    assert!(is_desktop_occluded, "Desktop deve estar marcado como ocluso quando janela maximizada está aberta");
+
+    // Durante oclusão, wallpaper_anim_frame NÃO é incrementado
+    // (Simula passagem de 500 ticks com a janela cobrindo a tela)
+    let frame_during_occlusion = session.wallpaper_anim_frame;
+    assert_eq!(frame_during_occlusion, 10);
+
+    // Des-maximiza a janela
+    if let Some(w) = session.wm.windows[0].as_mut() {
+        w.is_maximized = false;
+    }
+    let is_desktop_occluded_after = session.wm.windows.iter().any(|w_opt| {
+        if let Some(w) = w_opt {
+            w.is_open && !w.is_minimized && w.is_maximized
+        } else {
+            false
+        }
+    });
+    assert!(!is_desktop_occluded_after, "Desktop não deve estar mais ocluso");
+
+    // Retoma animação a partir do exato frame onde parou (frame 10 -> 11) com ZERO salto de tempo
+    session.wallpaper_anim_frame = session.wallpaper_anim_frame.wrapping_add(1);
+    assert_eq!(session.wallpaper_anim_frame, 11);
+}
