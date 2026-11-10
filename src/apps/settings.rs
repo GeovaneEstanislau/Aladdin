@@ -80,11 +80,40 @@ impl SettingsApp {
         buf[len] = b'\n';
         len += 1;
 
-        // Garante que o arquivo existe antes de gravar
-        let _ = vfs.create_file("/disk/SETTINGS.CFG");
-        if vfs.write_file("/disk/SETTINGS.CFG", &buf[..len]).is_err() {
-            self.status_msg = "[X] Erro ao gravar /disk/SETTINGS.CFG";
-            return Err("Falha na gravacao");
+        // Gravação Transacional Segura: grava em .TMP, valida e faz promoção atômica para .CFG
+        let _ = vfs.create_file("/disk/SETTINGS.TMP");
+        if vfs.write_file("/disk/SETTINGS.TMP", &buf[..len]).is_err() {
+            // Fallback direto se .TMP falhar
+            let _ = vfs.create_file("/disk/SETTINGS.CFG");
+            if vfs.write_file("/disk/SETTINGS.CFG", &buf[..len]).is_err() {
+                self.status_msg = "[X] Erro ao gravar /disk/SETTINGS.CFG";
+                return Err("Falha na gravacao");
+            }
+            self.status_msg = "[V] Ajustes salvos no disco com sucesso";
+            return Ok(());
+        }
+
+        // Validação de integridade do arquivo temporário gravado
+        let mut verify_buf = [0u8; 192];
+        let verify_ok = match vfs.read_file("/disk/SETTINGS.TMP", &mut verify_buf) {
+            Ok(bytes) => bytes == len && &verify_buf[..len] == &buf[..len],
+            Err(_) => false,
+        };
+
+        if verify_ok {
+            // Promoção atômica: remove arquivo antigo e renomeia temporário
+            let _ = vfs.remove_file("/disk/SETTINGS.CFG");
+            if vfs.rename_file("/disk/SETTINGS.TMP", "/disk/SETTINGS.CFG").is_err() {
+                // Fallback seguro se rename falhar
+                let _ = vfs.create_file("/disk/SETTINGS.CFG");
+                let _ = vfs.write_file("/disk/SETTINGS.CFG", &buf[..len]);
+                let _ = vfs.remove_file("/disk/SETTINGS.TMP");
+            }
+        } else {
+            // Em caso de falha de verificação do temporário, descarta o .TMP
+            let _ = vfs.remove_file("/disk/SETTINGS.TMP");
+            self.status_msg = "[X] Falha na verificacao de integridade";
+            return Err("Falha na integridade do arquivo temporario");
         }
 
         self.status_msg = "[V] Ajustes salvos no disco com sucesso";

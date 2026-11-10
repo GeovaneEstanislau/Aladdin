@@ -2473,35 +2473,46 @@ fn test_wallpaper_dynamic_and_audio_settings() {
     use aladdin::contracts::system::CapabilityMode;
     use aladdin::contracts::vfs::VfsHost;
 
+    use std::collections::BTreeMap;
+
     struct MockVfs {
-        data: std::cell::RefCell<Vec<u8>>,
+        files: std::cell::RefCell<BTreeMap<String, Vec<u8>>>,
     }
     impl VfsHost for MockVfs {
+        fn create_file(&self, path: &str) -> Result<(), ()> {
+            self.files.borrow_mut().entry(path.to_string()).or_insert_with(Vec::new);
+            Ok(())
+        }
         fn readdir(&self, _path: &str, _cb: &mut dyn FnMut(&str, bool, bool, bool)) {}
         fn read_file(&self, path: &str, buf: &mut [u8]) -> Result<usize, ()> {
-            if path == "/disk/SETTINGS.CFG" {
-                let d = self.data.borrow();
-                let len = d.len().min(buf.len());
-                buf[..len].copy_from_slice(&d[..len]);
+            if let Some(data) = self.files.borrow().get(path) {
+                let len = data.len().min(buf.len());
+                buf[..len].copy_from_slice(&data[..len]);
                 Ok(len)
             } else {
                 Err(())
             }
         }
         fn write_file(&self, path: &str, buf: &[u8]) -> Result<(), ()> {
-            if path == "/disk/SETTINGS.CFG" {
-                *self.data.borrow_mut() = buf.to_vec();
+            self.files.borrow_mut().insert(path.to_string(), buf.to_vec());
+            Ok(())
+        }
+        fn remove_file(&self, path: &str) -> Result<(), ()> {
+            self.files.borrow_mut().remove(path);
+            Ok(())
+        }
+        fn rename_file(&self, old_path: &str, new_path: &str) -> Result<(), ()> {
+            let data = self.files.borrow_mut().remove(old_path);
+            if let Some(d) = data {
+                self.files.borrow_mut().insert(new_path.to_string(), d);
                 Ok(())
             } else {
                 Err(())
             }
         }
-        fn remove_file(&self, _path: &str) -> Result<(), ()> {
-            Ok(())
-        }
     }
 
-    let mock_vfs = MockVfs { data: std::cell::RefCell::new(Vec::new()) };
+    let mock_vfs = MockVfs { files: std::cell::RefCell::new(BTreeMap::new()) };
     let mut app = SettingsApp::new();
 
     // Valores padrão
@@ -2591,6 +2602,83 @@ fn test_settings_corrupted_file_recovery_and_fuzzing() {
     let mode = app.load_from_vfs(&fuzz_vfs);
     assert_eq!(mode, Some(CapabilityMode::Balanced));
     assert_eq!(app.wallpaper_id, 0);
+}
+
+#[test]
+fn test_settings_transactional_save_and_rollback() {
+    use std::collections::BTreeMap;
+    use aladdin::apps::settings::SettingsApp;
+    use aladdin::contracts::system::CapabilityMode;
+    use aladdin::contracts::vfs::VfsHost;
+
+    struct FailVfs {
+        files: std::cell::RefCell<BTreeMap<String, Vec<u8>>>,
+        corrupt_tmp_on_write: bool,
+    }
+    impl VfsHost for FailVfs {
+        fn create_file(&self, path: &str) -> Result<(), ()> {
+            self.files.borrow_mut().entry(path.to_string()).or_insert_with(Vec::new);
+            Ok(())
+        }
+        fn readdir(&self, _path: &str, _cb: &mut dyn FnMut(&str, bool, bool, bool)) {}
+        fn read_file(&self, path: &str, buf: &mut [u8]) -> Result<usize, ()> {
+            if let Some(data) = self.files.borrow().get(path) {
+                let len = data.len().min(buf.len());
+                buf[..len].copy_from_slice(&data[..len]);
+                Ok(len)
+            } else {
+                Err(())
+            }
+        }
+        fn write_file(&self, path: &str, buf: &[u8]) -> Result<(), ()> {
+            let mut payload = buf.to_vec();
+            if self.corrupt_tmp_on_write && path == "/disk/SETTINGS.TMP" {
+                payload[0] ^= 0xFF; // Corrompe byte intencionalmente para simular erro de gravação/disco
+            }
+            self.files.borrow_mut().insert(path.to_string(), payload);
+            Ok(())
+        }
+        fn remove_file(&self, path: &str) -> Result<(), ()> {
+            self.files.borrow_mut().remove(path);
+            Ok(())
+        }
+        fn rename_file(&self, old_path: &str, new_path: &str) -> Result<(), ()> {
+            let data = self.files.borrow_mut().remove(old_path);
+            if let Some(d) = data {
+                self.files.borrow_mut().insert(new_path.to_string(), d);
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
+    }
+
+    // 1. Gravação bem-sucedida: .TMP validado e promovido para .CFG
+    let vfs_ok = FailVfs {
+        files: std::cell::RefCell::new(BTreeMap::new()),
+        corrupt_tmp_on_write: false,
+    };
+    let mut app = SettingsApp::new();
+    app.wallpaper_id = 9;
+    assert!(app.save_to_vfs(&vfs_ok, CapabilityMode::Advanced).is_ok());
+    assert!(vfs_ok.files.borrow().contains_key("/disk/SETTINGS.CFG"));
+    assert!(!vfs_ok.files.borrow().contains_key("/disk/SETTINGS.TMP")); // .TMP deve ter sido limpo
+
+    // 2. Gravação com falha de integridade em .TMP: aborta e não corrompe .CFG existente
+    let initial_cfg = b"# ALADDIN_CONFIG_V1\nMODE=1\nWALLPAPER=2\n";
+    let mut files_map = BTreeMap::new();
+    files_map.insert("/disk/SETTINGS.CFG".to_string(), initial_cfg.to_vec());
+
+    let vfs_fail = FailVfs {
+        files: std::cell::RefCell::new(files_map),
+        corrupt_tmp_on_write: true,
+    };
+    let mut app_fail = SettingsApp::new();
+    app_fail.wallpaper_id = 5;
+    // save_to_vfs detecta divergência de checksum/bytes e aborta
+    assert!(app_fail.save_to_vfs(&vfs_fail, CapabilityMode::Basic).is_err());
+    // O arquivo .CFG anterior continua intacto!
+    assert_eq!(vfs_fail.files.borrow().get("/disk/SETTINGS.CFG").unwrap(), initial_cfg);
 }
 
 #[test]
