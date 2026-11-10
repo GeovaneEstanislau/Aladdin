@@ -2426,9 +2426,9 @@ fn test_advanced_procedural_wallpapers() {
     let h = 300;
     let mut buf = vec![0u32; w * h];
 
-    // Testa os 5 temas de wallpapers procedurais (IDs 0 a 4)
-    for wp_id in 0..=4 {
-        render_wallpaper(&mut buf, w, h, CapabilityMode::Advanced, wp_id);
+    // Testa todos os 12 temas de wallpapers (0..=4 procedurais, 5..=7 domínio público, 8..=11 vídeos motion)
+    for wp_id in 0..=11 {
+        render_wallpaper(&mut buf, w, h, CapabilityMode::Advanced, wp_id, 42);
         // Garante que o buffer foi inteiramente preenchido (sem pixels nulos na base e topo)
         assert_ne!(buf[0], 0, "Wallpaper #{} topo não deve ser nulo", wp_id);
         assert_ne!(buf[(h - 1) * w], 0, "Wallpaper #{} base não deve ser nula", wp_id);
@@ -2465,4 +2465,64 @@ fn test_fluid_window_motion_interpolation() {
     let win_final = wm.windows[win_id].as_ref().unwrap();
     assert_eq!(win_final.render_x(), 0);
     assert_eq!(win_final.anim_ticks_remaining, 0);
+}
+
+#[test]
+fn test_wallpaper_dynamic_and_audio_settings() {
+    use aladdin::apps::settings::SettingsApp;
+    use aladdin::contracts::system::CapabilityMode;
+    use aladdin::contracts::vfs::VfsHost;
+
+    struct MockVfs {
+        data: std::cell::RefCell<Vec<u8>>,
+    }
+    impl VfsHost for MockVfs {
+        fn readdir(&self, _path: &str, _cb: &mut dyn FnMut(&str, bool, bool, bool)) {}
+        fn read_file(&self, path: &str, buf: &mut [u8]) -> Result<usize, ()> {
+            if path == "/disk/SETTINGS.CFG" {
+                let d = self.data.borrow();
+                let len = d.len().min(buf.len());
+                buf[..len].copy_from_slice(&d[..len]);
+                Ok(len)
+            } else {
+                Err(())
+            }
+        }
+        fn write_file(&self, path: &str, buf: &[u8]) -> Result<(), ()> {
+            if path == "/disk/SETTINGS.CFG" {
+                *self.data.borrow_mut() = buf.to_vec();
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
+        fn remove_file(&self, _path: &str) -> Result<(), ()> {
+            Ok(())
+        }
+    }
+
+    let mock_vfs = MockVfs { data: std::cell::RefCell::new(Vec::new()) };
+    let mut app = SettingsApp::new();
+
+    // Valores padrão
+    assert_eq!(app.wallpaper_id, 0);
+    assert_eq!(app.wallpaper_audio_enabled, false);
+    assert_eq!(app.wallpaper_audio_volume, 40);
+
+    // Altera para Wallpaper de Vídeo (Matrix Rain - ID 8) com Áudio ativado a 70%
+    app.wallpaper_id = 8;
+    app.wallpaper_audio_enabled = true;
+    app.wallpaper_audio_volume = 70;
+
+    // Salva no VFS
+    assert!(app.save_to_vfs(&mock_vfs, CapabilityMode::Advanced).is_ok());
+
+    // Carrega em nova instância
+    let mut app2 = SettingsApp::new();
+    let mode2 = app2.load_from_vfs(&mock_vfs);
+
+    assert_eq!(mode2, Some(CapabilityMode::Advanced));
+    assert_eq!(app2.wallpaper_id, 8);
+    assert_eq!(app2.wallpaper_audio_enabled, true);
+    assert_eq!(app2.wallpaper_audio_volume, 70);
 }

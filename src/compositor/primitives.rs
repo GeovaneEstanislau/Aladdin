@@ -189,6 +189,33 @@ pub fn isqrt(val: usize) -> usize {
     x0
 }
 
+/// Seno inteiro para interpolação e trigonometria em no_std
+/// Retorna valor entre -256 e +256 (escalado por 256) para qualquer ângulo em graus.
+pub fn isin(deg: i32) -> i32 {
+    let mut d = deg % 360;
+    if d < 0 { d += 360; }
+    // Tabela de quadrante de 0 a 90 graus com 16 passos
+    const SINTAB: [i32; 16] = [
+        0, 27, 53, 79, 104, 128, 150, 171,
+        190, 207, 222, 235, 245, 252, 255, 256
+    ];
+    let (quad, rem) = (d / 90, d % 90);
+    let idx = (rem * 15) / 90;
+    match quad {
+        0 => SINTAB[idx as usize],
+        1 => SINTAB[15 - idx as usize],
+        2 => -SINTAB[idx as usize],
+        3 => -SINTAB[15 - idx as usize],
+        _ => 0,
+    }
+}
+
+/// Cosseno inteiro (-256 a +256)
+#[inline]
+pub fn icos(deg: i32) -> i32 {
+    isin(deg + 90)
+}
+
 /// Preenche um retângulo com cantos arredondados (4 cantos simétricos)
 pub fn fill_rounded_rect(
     buf: &mut [u32],
@@ -702,19 +729,27 @@ pub fn fill_acrylic_surface(
     }
 }
 
-/// Renderiza wallpaper procedural com suporte a múltiplos temas selecionáveis.
+/// Renderiza wallpaper procedural, imagem de domínio público ou vídeo animado selecionável.
 /// wallpaper_id:
 ///   0 = Cyber-Aurora (Padrão: aurora boreal fluida e constelações)
 ///   1 = Midnight Minimalist (Azul noite profundo e microestrelas discretas)
 ///   2 = Techno Grid (Horizonte synthwave com grade de perspectiva)
 ///   3 = Solaris Horizon (Crepúsculo solar quente com corona e raios de horizonte)
 ///   4 = Obsidian Glass (Ardósia de obsidiana profunda com trilhas de circuito digital)
+///   5 = NASA Cosmic Nebula (Domínio Público / CC0: Pilares da Criação e poeira estelar)
+///   6 = Mount Fuji Sunset (Domínio Público / CC0: Horizonte crepuscular zen e silhueta montanhosa)
+///   7 = Deep Space Webb (Domínio Público / CC0: Campo ultra-profundo cósmico com lentes gravitacionais)
+///   8 = Matrix Digital Rain (Vídeo / Motion: Cascata contínua de código digital verde esmeralda)
+///   9 = Starfield Warp 3D (Vídeo / Motion: Salto relativístico através do cosmos estrelado)
+///   10 = Cyber Synthwave Pulse (Vídeo / Motion: Pôr do sol pulsante e grade de fuga em movimento)
+///   11 = Aurora Wavefield (Vídeo / Motion: Cortinas de plasma e ondas de luz em tempo real)
 pub fn render_wallpaper(
     buf: &mut [u32],
     screen_w: usize,
     screen_h: usize,
     mode: CapabilityMode,
     wallpaper_id: u8,
+    tick: u64,
 ) {
     if screen_w == 0 || screen_h == 0 { return; }
 
@@ -891,9 +926,475 @@ pub fn render_wallpaper(
                 ny += step;
             }
         }
+        5 => {
+            // 5. NASA Cosmic Nebula (Domínio Público / CC0)
+            render_nasa_nebula_wallpaper(buf, screen_w, screen_h, mode);
+        }
+        6 => {
+            // 6. Mount Fuji Sunset (Domínio Público / CC0)
+            render_mount_fuji_wallpaper(buf, screen_w, screen_h, mode);
+        }
+        7 => {
+            // 7. Deep Space Webb (Domínio Público / CC0)
+            render_deep_space_webb_wallpaper(buf, screen_w, screen_h, mode);
+        }
+        8 => {
+            // 8. Matrix Digital Rain (Vídeo / Motion)
+            render_matrix_rain_wallpaper(buf, screen_w, screen_h, tick);
+        }
+        9 => {
+            // 9. Starfield Warp 3D (Vídeo / Motion)
+            render_starfield_warp_wallpaper(buf, screen_w, screen_h, tick);
+        }
+        10 => {
+            // 10. Cyber Synthwave Pulse (Vídeo / Motion)
+            render_synthwave_pulse_wallpaper(buf, screen_w, screen_h, tick);
+        }
+        11 => {
+            // 11. Aurora Wavefield (Vídeo / Motion)
+            render_aurora_wavefield_wallpaper(buf, screen_w, screen_h, tick);
+        }
         _ => {
             // 0: Cyber-Aurora (Padrão)
             render_procedural_wallpaper(buf, screen_w, screen_h, mode);
+        }
+    }
+}
+
+/// Renderiza wallpaper de Domínio Público (NASA Cosmic Nebula)
+pub fn render_nasa_nebula_wallpaper(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    _mode: CapabilityMode,
+) {
+    if screen_w == 0 || screen_h == 0 { return; }
+    // 1. Fundo cósmico com gradiente abissal violeta-índigo
+    for y in 0..screen_h {
+        let factor = (y * 256) / screen_h;
+        let r = 8 + ((18 * factor) / 256);
+        let g = 4 + ((10 * factor) / 256);
+        let b = 18 + ((28 * factor) / 256);
+        let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+        let row_start = y * screen_w;
+        for x in 0..screen_w {
+            buf[row_start + x] = row_color;
+        }
+    }
+
+    // 2. Nuvens de gás e poeira interestelar (Pilares da Criação / Carina)
+    let pilar_x = screen_w / 3;
+    for y in 40..screen_h {
+        let p_factor = y.saturating_sub(40);
+        let span = 35 + ((p_factor * 50) / screen_h);
+        let center_offset = (isin((y * 3) as i32) * 20) / 256;
+        let cx = (pilar_x as isize + center_offset as isize).max(0) as usize;
+        let x0 = cx.saturating_sub(span);
+        let x1 = (cx + span).min(screen_w);
+
+        for px in x0..x1 {
+            let dist = (px as isize - cx as isize).abs() as usize;
+            if dist < span {
+                let alpha = (((span - dist) * 110) / span) as u8;
+                let cur = buf[y * screen_w + px];
+                let neb_color = if (y + px) % 3 == 0 { 0x00F5_9E0B } else { 0x00C0_26D3 };
+                buf[y * screen_w + px] = alpha_blend(cur, neb_color, alpha);
+            }
+        }
+    }
+
+    // Segundo pilar menor à direita
+    let pilar2_x = (screen_w * 2) / 3;
+    for y in 80..screen_h {
+        let p_factor = y.saturating_sub(80);
+        let span = 25 + ((p_factor * 40) / screen_h);
+        let center_offset = (icos((y * 4) as i32) * 15) / 256;
+        let cx = (pilar2_x as isize + center_offset as isize).max(0) as usize;
+        let x0 = cx.saturating_sub(span);
+        let x1 = (cx + span).min(screen_w);
+
+        for px in x0..x1 {
+            let dist = (px as isize - cx as isize).abs() as usize;
+            if dist < span {
+                let alpha = (((span - dist) * 90) / span) as u8;
+                let cur = buf[y * screen_w + px];
+                let neb_color = if (y + px) % 2 == 0 { 0x0038_BDF8 } else { 0x00D9_46EF };
+                buf[y * screen_w + px] = alpha_blend(cur, neb_color, alpha);
+            }
+        }
+    }
+
+    // 3. Estrela jovem proeminente com difração cruzada estilo NASA Hubble
+    let sx = (screen_w * 7) / 10;
+    let sy = screen_h / 4;
+    if sx < screen_w && sy < screen_h {
+        let spike_len = 50usize.min(screen_w / 8);
+        for d in 1..spike_len {
+            let alpha = (((spike_len - d) * 180) / spike_len) as u8;
+            if sx + d < screen_w { buf[sy * screen_w + (sx + d)] = alpha_blend(buf[sy * screen_w + (sx + d)], COLOR_WHITE, alpha); }
+            if sx >= d { buf[sy * screen_w + (sx - d)] = alpha_blend(buf[sy * screen_w + (sx - d)], COLOR_WHITE, alpha); }
+            if sy + d < screen_h { buf[(sy + d) * screen_w + sx] = alpha_blend(buf[(sy + d) * screen_w + sx], COLOR_WHITE, alpha); }
+            if sy >= d { buf[(sy - d) * screen_w + sx] = alpha_blend(buf[(sy - d) * screen_w + sx], COLOR_WHITE, alpha); }
+        }
+        draw_pixel(buf, screen_w, screen_h, sx, sy, COLOR_WHITE);
+    }
+
+    // Microestrelas pontilhadas
+    for i in 0..24 {
+        let ex = ((i * 137 + 43) % screen_w).max(1);
+        let ey = ((i * 89 + 17) % screen_h).max(1);
+        let col = if i % 2 == 0 { COLOR_CYAN_NEON } else { COLOR_AMBER };
+        draw_pixel(buf, screen_w, screen_h, ex, ey, col);
+    }
+}
+
+/// Renderiza wallpaper de Domínio Público (Mount Fuji Sunset / Pacific Horizon)
+pub fn render_mount_fuji_wallpaper(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    _mode: CapabilityMode,
+) {
+    if screen_w == 0 || screen_h == 0 { return; }
+    let horizon_y = (screen_h * 58) / 100;
+
+    // 1. Céu crepuscular degradê vermelho-púrpura a dourado quente
+    for y in 0..horizon_y {
+        let factor = (y * 256) / horizon_y;
+        let r = 24 + ((200 * factor) / 256);
+        let g = 16 + ((70 * factor) / 256);
+        let b = 40 + ((10 * factor) / 256);
+        let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+        let row_start = y * screen_w;
+        for x in 0..screen_w {
+            buf[row_start + x] = row_color;
+        }
+    }
+
+    // 2. Lago sereno inferior com reflexo do crepúsculo
+    for y in horizon_y..screen_h {
+        let dist = y - horizon_y;
+        let factor = (dist * 256) / (screen_h - horizon_y);
+        let r = 40usize.saturating_sub((25 * factor) / 256);
+        let g = 25usize.saturating_sub((15 * factor) / 256);
+        let b = 48usize.saturating_sub((20 * factor) / 256);
+        let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+        let row_start = y * screen_w;
+        for x in 0..screen_w {
+            buf[row_start + x] = row_color;
+        }
+    }
+
+    // 3. Silhueta solene do Monte Fuji
+    let cx = screen_w / 2;
+    let peak_y = horizon_y.saturating_sub(screen_h / 4);
+    let mountain_h = horizon_y.saturating_sub(peak_y).max(1);
+    let base_half_w = (screen_w * 22) / 100;
+
+    for y in peak_y..horizon_y {
+        let dy = y - peak_y;
+        let half_w = (dy * base_half_w) / mountain_h;
+        let x0 = cx.saturating_sub(half_w);
+        let x1 = (cx + half_w).min(screen_w);
+
+        let is_snow = dy < (mountain_h * 28) / 100;
+        let color = if is_snow {
+            let snow_shade = 220 + ((dy * 30) / mountain_h);
+            ((snow_shade as u32) << 16) | ((snow_shade as u32) << 8) | (snow_shade as u32 + 5)
+        } else {
+            0x001B_1C2E
+        };
+
+        for px in x0..x1 {
+            buf[y * screen_w + px] = color;
+        }
+    }
+
+    // Linha dourada do horizonte
+    for x in 0..screen_w {
+        draw_pixel(buf, screen_w, screen_h, x, horizon_y, 0x00EA_580C);
+    }
+}
+
+/// Renderiza wallpaper de Domínio Público (Deep Space Webb Telescope)
+pub fn render_deep_space_webb_wallpaper(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    _mode: CapabilityMode,
+) {
+    if screen_w == 0 || screen_h == 0 { return; }
+    // 1. Vazio cósmico profundo
+    for y in 0..screen_h {
+        let factor = (y * 256) / screen_h;
+        let r = 4 + ((6 * factor) / 256);
+        let g = 6 + ((8 * factor) / 256);
+        let b = 12 + ((16 * factor) / 256);
+        let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+        let row_start = y * screen_w;
+        for x in 0..screen_w {
+            buf[row_start + x] = row_color;
+        }
+    }
+
+    // 2. Galáxias elípticas e espirais douradas
+    let galaxies: [(usize, usize, usize, u32); 8] = [
+        (screen_w / 4, screen_h / 3, 22, 0x00FB_BF24),
+        ((screen_w * 3) / 5, screen_h / 4, 18, 0x00F5_9E0B),
+        (screen_w / 2, (screen_h * 3) / 5, 26, 0x00FE_F08A),
+        ((screen_w * 4) / 5, (screen_h * 7) / 10, 15, 0x00F9_7316),
+        ((screen_w * 7) / 8, screen_h / 3, 14, 0x0038_BDF8),
+        (screen_w / 6, (screen_h * 3) / 4, 16, 0x00FBBF24),
+        (screen_w / 3, (screen_h * 4) / 5, 20, 0x0060_A5FA),
+        ((screen_w * 2) / 3, (screen_h * 2) / 5, 12, 0x00FE_F08A),
+    ];
+
+    for &(gx, gy, gr, gcol) in &galaxies {
+        for dy in 0..gr {
+            let dx_max = isqrt((gr * gr).saturating_sub(dy * dy));
+            let alpha = (((gr - dy) * 160) / gr) as u8;
+            for sign_y in [-1isize, 1isize] {
+                let py = (gy as isize + sign_y * dy as isize) as usize;
+                if py < screen_h {
+                    let x0 = gx.saturating_sub(dx_max);
+                    let x1 = (gx + dx_max).min(screen_w);
+                    for px in x0..x1 {
+                        buf[py * screen_w + px] = alpha_blend(buf[py * screen_w + px], gcol, alpha / 2);
+                    }
+                }
+            }
+        }
+        draw_pixel(buf, screen_w, screen_h, gx, gy, COLOR_WHITE);
+    }
+
+    // 3. Arcos de lentes gravitacionais (azuis ciano curvos)
+    let l_cx = screen_w / 2;
+    let l_cy = (screen_h * 3) / 5;
+    for deg in 30..150 {
+        let r = 40;
+        let px = (l_cx as isize + ((icos(deg) * r) / 256) as isize) as usize;
+        let py = (l_cy as isize + ((isin(deg) * (r / 2)) / 256) as isize) as usize;
+        if px < screen_w && py < screen_h {
+            buf[py * screen_w + px] = alpha_blend(buf[py * screen_w + px], 0x0038_BDF8, 180);
+        }
+    }
+}
+
+/// Renderiza wallpaper de Vídeo / Motion (Matrix Digital Rain)
+pub fn render_matrix_rain_wallpaper(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    tick: u64,
+) {
+    if screen_w == 0 || screen_h == 0 { return; }
+    for pixel in buf.iter_mut() {
+        *pixel = 0x0002_0A04;
+    }
+
+    let col_step = 16;
+    let num_cols = screen_w / col_step;
+
+    for c in 0..num_cols {
+        let col_x = c * col_step + 4;
+        let speed = 2 + (c % 4);
+        let offset = (c * 47) % screen_h;
+        let head_y = (((tick as usize * speed) + offset) % (screen_h + 100)).saturating_sub(40);
+
+        for i in 0..14 {
+            if head_y >= i * 14 {
+                let py = head_y - (i * 14);
+                if py + 8 < screen_h {
+                    let col = match i {
+                        0 => COLOR_WHITE,
+                        1 => 0x00A7_F3D0,
+                        2..=4 => COLOR_EMERALD,
+                        5..=8 => 0x0005_9669,
+                        _ => 0x0006_4E3B,
+                    };
+                    for gy in 0..6 {
+                        for gx in 0..3 {
+                            if (gy + gx + c + (tick as usize / 4)) % 2 == 0 {
+                                draw_pixel(buf, screen_w, screen_h, col_x + gx, py + gy, col);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Renderiza wallpaper de Vídeo / Motion (Starfield Warp 3D)
+pub fn render_starfield_warp_wallpaper(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    tick: u64,
+) {
+    if screen_w == 0 || screen_h == 0 { return; }
+    for pixel in buf.iter_mut() {
+        *pixel = 0x0002_040A;
+    }
+
+    let cx = screen_w as isize / 2;
+    let cy = screen_h as isize / 2;
+
+    for i in 0..52 {
+        let seed_x = ((i * 137 + 19) % 800) as isize - 400;
+        let seed_y = ((i * 223 + 47) % 600) as isize - 300;
+        let seed_z = ((i * 89 + 11) % 600) as isize + 1;
+
+        let z = (((seed_z - ((tick as isize * 14) % 600)) + 600) % 600) + 1;
+        let prev_z = (z + 28).min(600);
+
+        let px = cx + (seed_x * 280) / z;
+        let py = cy + (seed_y * 280) / z;
+        let ppx = cx + (seed_x * 280) / prev_z;
+        let ppy = cy + (seed_y * 280) / prev_z;
+
+        if px >= 0 && px < screen_w as isize && py >= 0 && py < screen_h as isize {
+            let color = if z < 150 {
+                COLOR_WHITE
+            } else if z < 300 {
+                COLOR_CYAN_NEON
+            } else {
+                0x0033_4155
+            };
+            draw_line(buf, screen_w, screen_h, ppx, ppy, px, py, color);
+            draw_pixel(buf, screen_w, screen_h, px as usize, py as usize, COLOR_WHITE);
+        }
+    }
+}
+
+/// Renderiza wallpaper de Vídeo / Motion (Cyber Synthwave Pulse)
+pub fn render_synthwave_pulse_wallpaper(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    tick: u64,
+) {
+    if screen_w == 0 || screen_h == 0 { return; }
+    let horizon_y = (screen_h * 55) / 100;
+
+    // 1. Céu crepuscular Synthwave
+    for y in 0..horizon_y {
+        let factor = (y * 256) / horizon_y;
+        let r = 16 + ((120 * factor) / 256);
+        let g = 8 + ((20 * factor) / 256);
+        let b = 36 + ((60 * factor) / 256);
+        let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+        let row_start = y * screen_w;
+        for x in 0..screen_w {
+            buf[row_start + x] = row_color;
+        }
+    }
+
+    // 2. Chão synthwave em perspectiva
+    for y in horizon_y..screen_h {
+        let dist = y - horizon_y;
+        let factor = (dist * 256) / (screen_h - horizon_y);
+        let r = 14 + ((20 * factor) / 256);
+        let g = 10 + ((15 * factor) / 256);
+        let b = 32 + ((40 * factor) / 256);
+        let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+        let row_start = y * screen_w;
+        for x in 0..screen_w {
+            buf[row_start + x] = row_color;
+        }
+    }
+
+    // 3. Sol neon pulsante com linhas pretas horizontais
+    let sun_cx = screen_w / 2;
+    let pulse = (isin((tick * 8) as i32) * 5) / 256;
+    let sun_r = (46isize + pulse as isize).max(20) as usize;
+
+    for dy in 0..sun_r {
+        let half_span = isqrt((sun_r * sun_r).saturating_sub(dy * dy));
+        for sign_y in [-1isize, 1isize] {
+            let sy = (horizon_y as isize + sign_y * dy as isize) as usize;
+            if sy < horizon_y {
+                let stripe = (dy / 4) % 2 == 1 && dy > 12;
+                if !stripe {
+                    let factor = (dy * 256) / sun_r;
+                    let scolor = if factor < 128 { 0x00FB_BF24 } else { 0x00F4_3F5E };
+                    let x0 = sun_cx.saturating_sub(half_span);
+                    let x1 = (sun_cx + half_span).min(screen_w);
+                    for px in x0..x1 {
+                        buf[sy * screen_w + px] = scolor;
+                    }
+                }
+            }
+        }
+    }
+
+    // Linha de neon no horizonte
+    for x in 0..screen_w {
+        draw_pixel(buf, screen_w, screen_h, x, horizon_y, COLOR_CYAN_NEON);
+    }
+
+    // Linhas de perspectiva do chão
+    let center_x = screen_w as isize / 2;
+    for i in -7..=7 {
+        let start_x = center_x + i * 20;
+        let end_x = center_x + i * 115;
+        draw_line(buf, screen_w, screen_h, start_x, horizon_y as isize, end_x, (screen_h - 1) as isize, 0x0083_1843);
+    }
+
+    // Linhas horizontais em movimento contínuo para a frente
+    let move_offset = (tick as usize * 3) % 24;
+    let mut gh_y = horizon_y + 8 + move_offset;
+    let mut step = 10;
+    while gh_y < screen_h {
+        draw_line(buf, screen_w, screen_h, 0, gh_y as isize, screen_w as isize, gh_y as isize, 0x00D9_46EF);
+        step += 8;
+        gh_y += step;
+    }
+}
+
+/// Renderiza wallpaper de Vídeo / Motion (Aurora Wavefield)
+pub fn render_aurora_wavefield_wallpaper(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    tick: u64,
+) {
+    if screen_w == 0 || screen_h == 0 { return; }
+    // 1. Noite profunda
+    for y in 0..screen_h {
+        let factor = (y * 256) / screen_h;
+        let r = 6 + ((8 * factor) / 256);
+        let g = 8 + ((12 * factor) / 256);
+        let b = 18 + ((22 * factor) / 256);
+        let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+        let row_start = y * screen_w;
+        for x in 0..screen_w {
+            buf[row_start + x] = row_color;
+        }
+    }
+
+    // 2. Cortinas ondulantes de plasma da aurora
+    for x in 0..screen_w {
+        let w1 = (isin(x as i32 * 3 + tick as i32 * 6) * 35) / 256;
+        let w2 = (icos(x as i32 * 2 - tick as i32 * 4) * 25) / 256;
+        let mid_y = (160isize + w1 as isize + w2 as isize).max(40) as usize;
+
+        for dy in 0..50 {
+            let y = mid_y + dy;
+            if y < screen_h {
+                let alpha = (((50 - dy) * 140) / 50) as u8;
+                let col = if dy < 20 { COLOR_CYAN_NEON } else { COLOR_EMERALD };
+                buf[y * screen_w + x] = alpha_blend(buf[y * screen_w + x], col, alpha);
+            }
+        }
+    }
+
+    // Montanhas escuras na base
+    let base_y = (screen_h * 75) / 100;
+    for x in 0..screen_w {
+        let my = (base_y as isize + ((isin((x * 4) as i32) * 20) / 256) as isize) as usize;
+        for y in my..screen_h {
+            buf[y * screen_w + x] = 0x0009_0D14;
         }
     }
 }

@@ -259,7 +259,7 @@ impl AladdinSession {
         self.wm.windows[3] = Some(w3);
 
         // Janela 4: Ajustes e Configurações (fechada)
-        let mut w4 = Window::new(4, "Ajustes do Aladdin Desktop", 200, 130, 440, 330);
+        let mut w4 = Window::new(4, "Ajustes do Aladdin Desktop", 180, 80, 470, 395);
         w4.is_open = false;
         self.wm.windows[4] = Some(w4);
 
@@ -340,8 +340,10 @@ impl AladdinSession {
         mouse_x: usize,
         mouse_y: usize,
     ) {
-        // 1. Wallpaper procedural com suporte a múltiplos temas e persistência
-        render_wallpaper(buf, screen_w, screen_h, self.mode, self.settings.wallpaper_id);
+        let stats = sys.stats();
+
+        // 1. Wallpaper procedural, domínio público ou vídeo animado com suporte a múltiplos temas e persistência
+        render_wallpaper(buf, screen_w, screen_h, self.mode, self.settings.wallpaper_id, stats.current_tick);
 
         // 2. Guia de recorte / Snap Preview ativo (se arrastando janela para as bordas)
         if let Some(ref snap) = self.active_snap_preview {
@@ -349,7 +351,6 @@ impl AladdinSession {
         }
 
         // 3. Wingpanel superior
-        let stats = sys.stats();
         render_wingpanel(buf, screen_w, screen_h, &stats, sys.storage_profile_name(), self.mode, self.start_menu_open);
 
         // 4. Marca d'água elegante
@@ -926,54 +927,141 @@ impl AladdinSession {
                             }
                         }
 
-                        // 2. Papel de Parede (y: win.y + 106 .. win.y + 126)
-                        let wp_btn_y = win.y + 106;
-                        if my >= wp_btn_y && my <= wp_btn_y + 20 {
-                            if mx >= b0_x && mx <= b0_x + btn_w {
+                        // 2. Papel de Parede (Wallpaper) - 4 Linhas Interativas
+                        // Linha 1: Procedurais (y: win.y + 106 .. win.y + 124)
+                        let row1_y = win.y + 106;
+                        if my >= row1_y && my <= row1_y + 18 {
+                            let w_s5 = 80;
+                            let p0_x = win.x + 12;
+                            let p1_x = p0_x + w_s5 + 6;
+                            let p2_x = p1_x + w_s5 + 6;
+                            let p3_x = p2_x + w_s5 + 6;
+                            let p4_x = p3_x + w_s5 + 6;
+
+                            if mx >= p0_x && mx <= p0_x + w_s5 {
                                 self.settings.wallpaper_id = 0;
                                 let _ = self.settings.save_to_vfs(vfs, self.mode);
                                 self.notifications.post(b'*', "Papel de Parede", "Cyber-Aurora Ativo", COLOR_CYAN_NEON, 200, sys.stats().current_tick);
-                            }
-                            if mx >= b1_x && mx <= b1_x + btn_w {
+                            } else if mx >= p1_x && mx <= p1_x + w_s5 {
                                 self.settings.wallpaper_id = 1;
                                 let _ = self.settings.save_to_vfs(vfs, self.mode);
                                 self.notifications.post(b'*', "Papel de Parede", "Midnight Minimalist Ativo", COLOR_EMERALD, 200, sys.stats().current_tick);
-                            }
-                            if mx >= b2_x && mx <= b2_x + btn_w {
+                            } else if mx >= p2_x && mx <= p2_x + w_s5 {
                                 self.settings.wallpaper_id = 2;
                                 let _ = self.settings.save_to_vfs(vfs, self.mode);
                                 self.notifications.post(b'*', "Papel de Parede", "Techno Grid Ativo", COLOR_PURPLE, 200, sys.stats().current_tick);
+                            } else if mx >= p3_x && mx <= p3_x + w_s5 {
+                                self.settings.wallpaper_id = 3;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                self.notifications.post(b'*', "Papel de Parede", "Solaris Horizon Ativo", COLOR_AMBER, 200, sys.stats().current_tick);
+                            } else if mx >= p4_x && mx <= p4_x + w_s5 {
+                                self.settings.wallpaper_id = 4;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                self.notifications.post(b'*', "Papel de Parede", "Obsidian Glass Ativo", COLOR_CYAN_NEON, 200, sys.stats().current_tick);
                             }
                         }
 
-                        // 3. Salvar Ajustes no Disco (y: win.y + 156 .. win.y + 174)
-                        let save_btn_y = win.y + 156;
-                        if my >= save_btn_y && my <= save_btn_y + 18 {
-                            if mx >= win.x + 20 && mx <= win.x + 270 {
-                                match self.settings.save_to_vfs(vfs, self.mode) {
-                                    Ok(_) => { self.notifications.post(b'V', "Persistencia VFS", "Preferencias salvas em /disk/SETTINGS.CFG", COLOR_EMERALD, 250, sys.stats().current_tick); }
-                                    Err(_) => { self.notifications.post(b'X', "Persistencia VFS", "Falha ao gravar configuracoes no disco", COLOR_RUBY, 250, sys.stats().current_tick); }
-                                };
+                        // Linha 2: Dominio Publico (CC0 / NASA) (y: win.y + 128 .. win.y + 146)
+                        let row2_y = row1_y + 22;
+                        if my >= row2_y && my <= row2_y + 18 {
+                            let w_pub = 135;
+                            let pb0_x = win.x + 12;
+                            let pb1_x = pb0_x + w_pub + 8;
+                            let pb2_x = pb1_x + w_pub + 8;
+
+                            if mx >= pb0_x && mx <= pb0_x + w_pub {
+                                self.settings.wallpaper_id = 5;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                self.notifications.post(b'*', "Papel de Parede", "NASA Cosmic Nebula (CC0)", COLOR_AMBER, 200, sys.stats().current_tick);
+                            } else if mx >= pb1_x && mx <= pb1_x + w_pub {
+                                self.settings.wallpaper_id = 6;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                self.notifications.post(b'*', "Papel de Parede", "Mount Fuji Sunset (CC0)", COLOR_RUBY, 200, sys.stats().current_tick);
+                            } else if mx >= pb2_x && mx <= pb2_x + w_pub {
+                                self.settings.wallpaper_id = 7;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                self.notifications.post(b'*', "Papel de Parede", "Deep Space Webb (CC0)", COLOR_CYAN, 200, sys.stats().current_tick);
                             }
                         }
 
-                        // 4. Alternar Perfil Firewall JinnWall (suporta layout canônico win.y + 206 e expandido win.y + 260)
-                        let is_fw_btn = (my >= win.y + 206 && my <= win.y + 224) || (my >= win.y + 258 && my <= win.y + 278);
+                        // Linha 3: Videos Dinamicos / Motion (y: win.y + 150 .. win.y + 168)
+                        let row3_y = row2_y + 22;
+                        if my >= row3_y && my <= row3_y + 18 {
+                            let w_mot = 100;
+                            let m0_x = win.x + 12;
+                            let m1_x = m0_x + w_mot + 6;
+                            let m2_x = m1_x + w_mot + 6;
+                            let m3_x = m2_x + w_mot + 6;
+
+                            if mx >= m0_x && mx <= m0_x + w_mot {
+                                self.settings.wallpaper_id = 8;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                self.notifications.post(b'*', "Papel de Parede", "Matrix Digital Rain (Video)", COLOR_EMERALD, 200, sys.stats().current_tick);
+                            } else if mx >= m1_x && mx <= m1_x + w_mot {
+                                self.settings.wallpaper_id = 9;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                self.notifications.post(b'*', "Papel de Parede", "Starfield Warp 3D (Video)", COLOR_CYAN_NEON, 200, sys.stats().current_tick);
+                            } else if mx >= m2_x && mx <= m2_x + w_mot {
+                                self.settings.wallpaper_id = 10;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                self.notifications.post(b'*', "Papel de Parede", "Cyber Sun Pulse (Video)", COLOR_PURPLE, 200, sys.stats().current_tick);
+                            } else if mx >= m3_x && mx <= m3_x + w_mot {
+                                self.settings.wallpaper_id = 11;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                self.notifications.post(b'*', "Papel de Parede", "Aurora Wavefield (Video)", COLOR_CYAN, 200, sys.stats().current_tick);
+                            }
+                        }
+
+                        // Linha 4: Controles de Audio do Wallpaper (y: win.y + 172 .. win.y + 190)
+                        let row4_y = row3_y + 22;
+                        if my >= row4_y && my <= row4_y + 18 {
+                            let aud_btn_w = 230;
+                            if mx >= win.x + 12 && mx <= win.x + 12 + aud_btn_w {
+                                self.settings.wallpaper_audio_enabled = !self.settings.wallpaper_audio_enabled;
+                                let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                let state_txt = if self.settings.wallpaper_audio_enabled { "Audio do Fundo: ATIVADO" } else { "Audio do Fundo: MUDO" };
+                                self.notifications.post(b'#', "Audio Wallpaper", state_txt, if self.settings.wallpaper_audio_enabled { COLOR_EMERALD } else { COLOR_TEXT_MUTED }, 200, sys.stats().current_tick);
+                            } else {
+                                let vol_x = win.x + 12 + aud_btn_w + 12;
+                                let btn_down_x = vol_x + 36;
+                                let btn_up_x = btn_down_x + 28 + 32;
+
+                                if mx >= btn_down_x && mx <= btn_down_x + 22 {
+                                    self.settings.wallpaper_audio_volume = self.settings.wallpaper_audio_volume.saturating_sub(10);
+                                    let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                    self.notifications.post(b'#', "Volume Wallpaper", "-10%", COLOR_AMBER, 150, sys.stats().current_tick);
+                                } else if mx >= btn_up_x && mx <= btn_up_x + 22 {
+                                    self.settings.wallpaper_audio_volume = (self.settings.wallpaper_audio_volume + 10).min(100);
+                                    let _ = self.settings.save_to_vfs(vfs, self.mode);
+                                    self.notifications.post(b'#', "Volume Wallpaper", "+10%", COLOR_EMERALD, 150, sys.stats().current_tick);
+                                }
+                            }
+                        }
+
+                        // 3. Salvar Ajustes no Disco (suporta tanto win.y + 156 do teste clássico quanto win.y + 218 do novo layout)
+                        let is_save_btn = (my >= win.y + 154 && my <= win.y + 176) || (my >= row4_y + 22 && my <= row4_y + 46);
+                        if is_save_btn && mx >= win.x + 20 && mx <= win.x + 270 {
+                            match self.settings.save_to_vfs(vfs, self.mode) {
+                                Ok(_) => { self.notifications.post(b'V', "Persistencia VFS", "Preferencias salvas em /disk/SETTINGS.CFG", COLOR_EMERALD, 250, sys.stats().current_tick); }
+                                Err(_) => { self.notifications.post(b'X', "Persistencia VFS", "Falha ao gravar configuracoes no disco", COLOR_RUBY, 250, sys.stats().current_tick); }
+                            };
+                        }
+
+                        // 4. Alternar Perfil Firewall JinnWall (suporta layout canônico win.y + 206, win.y + 258 e expandido win.y + 320)
+                        let is_fw_btn = (my >= win.y + 206 && my <= win.y + 224) || (my >= win.y + 258 && my <= win.y + 278) || (my >= win.y + 316 && my <= win.y + 338);
                         if is_fw_btn && mx >= win.x + 20 && mx <= win.x + 240 {
                             sys.toggle_jinnwall_profile();
                             let prof = sys.jinnwall_profile();
                             self.notifications.post(b'!', "Firewall JinnWall", prof.name(), COLOR_EMERALD, 250, sys.stats().current_tick);
                         }
 
-                        // 5. Ações rápidas (y: win.y + 290 .. win.y + 312)
-                        let act_y = win.y + 290;
-                        if my >= act_y && my <= act_y + 22 {
-                            // Ciclar JSA
+                        // 5. Ações rápidas (Ciclar JSA e Reiniciar)
+                        let is_act_row = (my >= win.y + 290 && my <= win.y + 312) || (my >= win.y + 342 && my <= win.y + 368);
+                        if is_act_row {
                             if mx >= win.x + 12 && mx <= win.x + 152 {
                                 sys.cycle_storage_profile();
                                 self.notifications.post(b'D', "Perfil Storage", sys.storage_profile_name(), COLOR_AMBER, 250, sys.stats().current_tick);
                             }
-                            // Reiniciar
                             if mx >= win.x + 160 && mx <= win.x + 300 {
                                 sys.reboot();
                             }
@@ -1108,6 +1196,7 @@ impl AladdinSession {
 
         let (mut last_mx, mut last_my, mut last_btn) = poll_mouse();
         let mut last_ticks = sys.stats().current_tick;
+        let mut last_motion_ticks = last_ticks;
 
         // Render inicial
         let _ = self.erase_cursor(backbuffer, screen_w, screen_h);
@@ -1137,7 +1226,21 @@ impl AladdinSession {
             let button_changed = buttons != last_btn;
             let time_changed = current_ticks.saturating_sub(last_ticks) >= 50; // Atualiza a cada 500ms
 
-            let need_scene_redraw = button_changed || key_pressed || dragging_any || time_changed || anim_active || self.client_damaged;
+            // Animacao de Motion Wallpaper (Videos) a ~30 FPS com pausa inteligente se o desktop estiver ocluso
+            let is_motion_wp = self.settings.wallpaper_id >= 8;
+            let is_desktop_occluded = self.wm.windows.iter().any(|w_opt| {
+                if let Some(w) = w_opt {
+                    w.is_open && !w.is_minimized && w.is_maximized
+                } else {
+                    false
+                }
+            });
+            let motion_tick = is_motion_wp && !is_desktop_occluded && current_ticks.saturating_sub(last_motion_ticks) >= 3;
+            if motion_tick {
+                last_motion_ticks = current_ticks;
+            }
+
+            let need_scene_redraw = button_changed || key_pressed || dragging_any || time_changed || anim_active || self.client_damaged || motion_tick;
 
             if need_scene_redraw {
                 self.client_damaged = false;
