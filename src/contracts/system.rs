@@ -33,6 +33,12 @@ pub struct SystemStats {
     pub jinnwall_inspected: u64,
     pub jinnwall_accepted: u64,
     pub jinnwall_profile: JinnWallProfile,
+    pub physical_frames_used: usize,
+    pub physical_frames_total: usize,
+    pub dynamic_pages_allocated: usize,
+    pub dynamic_pages_freed: usize,
+    pub vfs_open_fds: usize,
+    pub vfs_mounted_volumes: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

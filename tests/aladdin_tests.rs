@@ -489,6 +489,12 @@ impl aladdin::contracts::system::SystemHost for MockSystem {
             jinnwall_inspected: 150,
             jinnwall_accepted: 138,
             jinnwall_profile: prof,
+            physical_frames_used: 16384,
+            physical_frames_total: 131072,
+            dynamic_pages_allocated: 20,
+            dynamic_pages_freed: 5,
+            vfs_open_fds: 3,
+            vfs_mounted_volumes: 2,
         }
     }
 
@@ -648,6 +654,12 @@ fn test_telemetry_consistency_and_zero_values() {
                 jinnwall_inspected: 0,
                 jinnwall_accepted: 0,
                 jinnwall_profile: JinnWallProfile::PublicSecure,
+                physical_frames_used: 0,
+                physical_frames_total: 131072,
+                dynamic_pages_allocated: 0,
+                dynamic_pages_freed: 0,
+                vfs_open_fds: 0,
+                vfs_mounted_volumes: 0,
             }
         }
         fn yield_cpu(&self) {}
@@ -733,6 +745,12 @@ fn test_system_stats_saturation_and_boundary_safety() {
                 jinnwall_inspected: u64::MAX,
                 jinnwall_accepted: u64::MAX,
                 jinnwall_profile: JinnWallProfile::Development,
+                physical_frames_used: usize::MAX,
+                physical_frames_total: usize::MAX,
+                dynamic_pages_allocated: usize::MAX,
+                dynamic_pages_freed: usize::MAX,
+                vfs_open_fds: usize::MAX,
+                vfs_mounted_volumes: usize::MAX,
             }
         }
         fn yield_cpu(&self) {}
@@ -917,6 +935,12 @@ fn test_client_window_lifecycle_and_dispatch_in_session() {
                 jinnwall_inspected: 0,
                 jinnwall_accepted: 0,
                 jinnwall_profile: JinnWallProfile::Development,
+                physical_frames_used: 16384,
+                physical_frames_total: 131072,
+                dynamic_pages_allocated: 0,
+                dynamic_pages_freed: 0,
+                vfs_open_fds: 0,
+                vfs_mounted_volumes: 0,
             }
         }
         fn yield_cpu(&self) {}
@@ -1937,6 +1961,12 @@ fn test_system_monitor_network_states_and_adapter_telemetry() {
                 jinnwall_inspected: 10,
                 jinnwall_accepted: 10,
                 jinnwall_profile: JinnWallProfile::PublicSecure,
+                physical_frames_used: 8192,
+                physical_frames_total: 131072,
+                dynamic_pages_allocated: 0,
+                dynamic_pages_freed: 0,
+                vfs_open_fds: 1,
+                vfs_mounted_volumes: 1,
             }
         }
         fn yield_cpu(&self) {}
@@ -2070,6 +2100,12 @@ fn test_quick_settings_popover_interactions() {
                 jinnwall_inspected: 100,
                 jinnwall_accepted: 100,
                 jinnwall_profile: JinnWallProfile::PublicSecure,
+                physical_frames_used: 6144,
+                physical_frames_total: 131072,
+                dynamic_pages_allocated: 0,
+                dynamic_pages_freed: 0,
+                vfs_open_fds: 2,
+                vfs_mounted_volumes: 1,
             }
         }
         fn yield_cpu(&self) {}
@@ -2142,6 +2178,12 @@ fn test_app_switcher_hud_lifecycle_and_tab_navigation() {
                 jinnwall_inspected: 0,
                 jinnwall_accepted: 0,
                 jinnwall_profile: JinnWallProfile::PublicSecure,
+                physical_frames_used: 0,
+                physical_frames_total: 131072,
+                dynamic_pages_allocated: 0,
+                dynamic_pages_freed: 0,
+                vfs_open_fds: 0,
+                vfs_mounted_volumes: 0,
             }
         }
         fn yield_cpu(&self) {}
