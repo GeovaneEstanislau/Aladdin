@@ -80,7 +80,7 @@ impl SettingsApp {
         buf[len] = b'\n';
         len += 1;
 
-        // Gravação Transacional Segura: grava em .TMP, valida e faz promoção atômica para .CFG
+        // Gravação Transacional Segura: grava em .TMP, valida e faz promoção com salvaguarda (.BAK)
         let _ = vfs.create_file("/disk/SETTINGS.TMP");
         if vfs.write_file("/disk/SETTINGS.TMP", &buf[..len]).is_err() {
             // Fallback direto se .TMP falhar
@@ -101,8 +101,12 @@ impl SettingsApp {
         };
 
         if verify_ok {
-            // Promoção atômica: remove arquivo antigo e renomeia temporário
-            let _ = vfs.remove_file("/disk/SETTINGS.CFG");
+            // Salvaguarda pré-promoção: se já existe um .CFG íntegro, rotaciona para .BAK.
+            // Isso previne perda de configuração se houver corte de energia
+            // no milissegundo exato entre a exclusão e a renomeação do temporário.
+            let _ = vfs.remove_file("/disk/SETTINGS.BAK");
+            let _ = vfs.rename_file("/disk/SETTINGS.CFG", "/disk/SETTINGS.BAK");
+
             if vfs.rename_file("/disk/SETTINGS.TMP", "/disk/SETTINGS.CFG").is_err() {
                 // Fallback seguro se rename falhar
                 let _ = vfs.create_file("/disk/SETTINGS.CFG");
@@ -120,19 +124,24 @@ impl SettingsApp {
         Ok(())
     }
 
-    /// Carrega preferências do usuário a partir do arquivo `/disk/SETTINGS.CFG`
-    pub fn load_from_vfs(&mut self, vfs: &dyn VfsHost) -> Option<CapabilityMode> {
-        let mut buf = [0u8; 192];
-        let bytes_read = vfs.read_file("/disk/SETTINGS.CFG", &mut buf).ok()?;
-        if bytes_read == 0 {
-            return None;
-        }
-
-        let text = core::str::from_utf8(&buf[..bytes_read]).ok()?;
+    /// Tenta decodificar um buffer contendo cabeçalho e chave-valor de configuração.
+    /// Retorna `Ok(loaded_mode)` se o arquivo for semanticamente válido, ou `Err(())` se for corrompido/inválido.
+    fn parse_config_slice(&mut self, data: &[u8]) -> Result<Option<CapabilityMode>, ()> {
+        let text = core::str::from_utf8(data).map_err(|_| ())?;
         let mut loaded_mode = None;
+        let mut recognized_valid = false;
 
         for line in text.lines() {
             let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            if line.starts_with('#') {
+                if line == "# ALADDIN_CONFIG_V1" {
+                    recognized_valid = true;
+                }
+                continue;
+            }
             if let Some(val) = line.strip_prefix("MODE=") {
                 if let Ok(m) = val.parse::<u8>() {
                     loaded_mode = match m {
@@ -141,28 +150,83 @@ impl SettingsApp {
                         2 => Some(CapabilityMode::Advanced),
                         _ => None,
                     };
+                    if loaded_mode.is_some() {
+                        recognized_valid = true;
+                    }
                 }
             } else if let Some(val) = line.strip_prefix("WALLPAPER=") {
                 if let Ok(w) = val.parse::<u8>() {
                     if w <= 11 {
                         self.wallpaper_id = w;
+                        recognized_valid = true;
                     }
                 }
             } else if let Some(val) = line.strip_prefix("WALLPAPER_AUDIO=") {
                 if let Ok(a) = val.parse::<u8>() {
                     self.wallpaper_audio_enabled = a != 0;
+                    recognized_valid = true;
                 }
             } else if let Some(val) = line.strip_prefix("WALLPAPER_VOL=") {
                 if let Ok(v) = val.parse::<u8>() {
                     self.wallpaper_audio_volume = v.min(100);
+                    recognized_valid = true;
                 }
             }
         }
 
-        if loaded_mode.is_some() {
-            self.status_msg = "[V] Ajustes carregados do disco";
+        if recognized_valid {
+            Ok(loaded_mode)
+        } else {
+            Err(())
         }
-        loaded_mode
+    }
+
+    /// Carrega preferências do usuário a partir do arquivo `/disk/SETTINGS.CFG`,
+    /// com recuperação automática por fallback em caso de corrupção ou interrupção de energia
+    /// buscando em `/disk/SETTINGS.BAK` ou `/disk/SETTINGS.TMP`.
+    pub fn load_from_vfs(&mut self, vfs: &dyn VfsHost) -> Option<CapabilityMode> {
+        let mut buf = [0u8; 192];
+
+        // 1. Tenta carregar arquivo principal /disk/SETTINGS.CFG
+        if let Ok(bytes) = vfs.read_file("/disk/SETTINGS.CFG", &mut buf) {
+            if bytes > 0 {
+                if let Ok(mode) = self.parse_config_slice(&buf[..bytes]) {
+                    if mode.is_some() {
+                        self.status_msg = "[V] Ajustes carregados do disco";
+                    }
+                    return mode;
+                }
+            }
+        }
+
+        // 2. Fallback resiliente a corte de energia: tenta backup /disk/SETTINGS.BAK
+        if let Ok(bytes) = vfs.read_file("/disk/SETTINGS.BAK", &mut buf) {
+            if bytes > 0 {
+                if let Ok(mode) = self.parse_config_slice(&buf[..bytes]) {
+                    // Restaura .CFG a partir do .BAK íntegro
+                    let _ = vfs.create_file("/disk/SETTINGS.CFG");
+                    let _ = vfs.write_file("/disk/SETTINGS.CFG", &buf[..bytes]);
+                    self.status_msg = "[V] Ajustes recuperados do backup (.BAK)";
+                    return mode;
+                }
+            }
+        }
+
+        // 3. Fallback resiliente a corte antes do rename: tenta /disk/SETTINGS.TMP
+        if let Ok(bytes) = vfs.read_file("/disk/SETTINGS.TMP", &mut buf) {
+            if bytes > 0 {
+                if let Ok(mode) = self.parse_config_slice(&buf[..bytes]) {
+                    // Promove .TMP sobrevivente para .CFG
+                    let _ = vfs.create_file("/disk/SETTINGS.CFG");
+                    let _ = vfs.write_file("/disk/SETTINGS.CFG", &buf[..bytes]);
+                    let _ = vfs.remove_file("/disk/SETTINGS.TMP");
+                    self.status_msg = "[V] Ajustes recuperados de temporario (.TMP)";
+                    return mode;
+                }
+            }
+        }
+
+        None
     }
 
     pub fn render(

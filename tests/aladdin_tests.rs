@@ -2679,6 +2679,37 @@ fn test_settings_transactional_save_and_rollback() {
     assert!(app_fail.save_to_vfs(&vfs_fail, CapabilityMode::Basic).is_err());
     // O arquivo .CFG anterior continua intacto!
     assert_eq!(vfs_fail.files.borrow().get("/disk/SETTINGS.CFG").unwrap(), initial_cfg);
+
+    // 3. Queda de energia simulada durante rename: .CFG ausente/corrompido mas .BAK íntegro
+    let mut files_powercut_bak = BTreeMap::new();
+    files_powercut_bak.insert("/disk/SETTINGS.CFG".to_string(), b"GARBAGE_ZERO_BYTES".to_vec());
+    files_powercut_bak.insert("/disk/SETTINGS.BAK".to_string(), initial_cfg.to_vec());
+
+    let vfs_powercut_bak = FailVfs {
+        files: std::cell::RefCell::new(files_powercut_bak),
+        corrupt_tmp_on_write: false,
+    };
+    let mut app_recovered_bak = SettingsApp::new();
+    let mode_bak = app_recovered_bak.load_from_vfs(&vfs_powercut_bak);
+    assert_eq!(mode_bak, Some(CapabilityMode::Balanced));
+    assert_eq!(app_recovered_bak.wallpaper_id, 2);
+    // .CFG foi restaurado com sucesso a partir do .BAK
+    assert_eq!(vfs_powercut_bak.files.borrow().get("/disk/SETTINGS.CFG").unwrap(), initial_cfg);
+
+    // 4. Queda de energia simulada antes da promoção: .CFG ausente mas .TMP íntegro sobreviveu
+    let mut files_powercut_tmp = BTreeMap::new();
+    files_powercut_tmp.insert("/disk/SETTINGS.TMP".to_string(), b"# ALADDIN_CONFIG_V1\nMODE=2\nWALLPAPER=8\n".to_vec());
+
+    let vfs_powercut_tmp = FailVfs {
+        files: std::cell::RefCell::new(files_powercut_tmp),
+        corrupt_tmp_on_write: false,
+    };
+    let mut app_recovered_tmp = SettingsApp::new();
+    let mode_tmp = app_recovered_tmp.load_from_vfs(&vfs_powercut_tmp);
+    assert_eq!(mode_tmp, Some(CapabilityMode::Advanced));
+    assert_eq!(app_recovered_tmp.wallpaper_id, 8);
+    // .CFG foi restaurado a partir do .TMP
+    assert!(vfs_powercut_tmp.files.borrow().contains_key("/disk/SETTINGS.CFG"));
 }
 
 #[test]
