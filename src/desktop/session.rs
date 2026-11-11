@@ -1184,6 +1184,11 @@ impl AladdinSession {
         } else if top_idx == 3 {
             self.files.handle_key(ch, vfs);
             self.client_damaged = true;
+        } else if let Some(term_win) = self.wm.windows[1].as_ref() {
+            // Fallback de foco: se o terminal estiver aberto, roteia as teclas para ele
+            if term_win.is_open && !term_win.is_minimized {
+                self.term.handle_key(ch, proc_host);
+            }
         }
     }
 
