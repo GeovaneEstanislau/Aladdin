@@ -1027,19 +1027,27 @@ impl FileManagerApp {
         draw_string(buf, screen_w, screen_h, "< Ant", list_x + 10, pag_y + 3, prev_fg, Some(prev_bg));
 
         // Texto Central: Pag X/Y (N itens)
-        let mut pag_str = [0u8; 32];
+        let mut pag_str = [0u8; 64];
         let mut plen = 0;
-        for b in b"Pag " { pag_str[plen] = *b; plen += 1; }
+        let mut push_pag = |slice: &[u8]| {
+            for &b in slice {
+                if plen < pag_str.len() {
+                    pag_str[plen] = b;
+                    plen += 1;
+                }
+            }
+        };
+        push_pag(b"Pag ");
         let mut nb = [0u8; 8];
         let nl = format_num(cur_p, &mut nb);
-        for b in &nb[..nl] { pag_str[plen] = *b; plen += 1; }
-        pag_str[plen] = b'/'; plen += 1;
+        push_pag(&nb[..nl]);
+        push_pag(b"/");
         let nl2 = format_num(tot_pages, &mut nb);
-        for b in &nb[..nl2] { pag_str[plen] = *b; plen += 1; }
-        for b in b" (" { pag_str[plen] = *b; plen += 1; }
+        push_pag(&nb[..nl2]);
+        push_pag(b" (");
         let nl3 = format_num(self.file_cache_count, &mut nb);
-        for b in &nb[..nl3] { pag_str[plen] = *b; plen += 1; }
-        for b in b" itens)" { pag_str[plen] = *b; plen += 1; }
+        push_pag(&nb[..nl3]);
+        push_pag(b" itens)");
 
         if let Ok(s) = core::str::from_utf8(&pag_str[..plen]) {
             let mid_x = list_x + (list_w.saturating_sub(plen * 8)) / 2;
@@ -1062,28 +1070,36 @@ impl FileManagerApp {
         // Linha 1: Capacidade do Volume ativo via StorageHost
         let vol_opt = storage.get_volume(self.active_volume);
         if let Some(vol) = vol_opt {
-            let mut info_buf = [0u8; 80];
+            let mut info_buf = [0u8; 160];
             let mut ilen = 0;
+            let mut push_info = |slice: &[u8]| {
+                for &b in slice {
+                    if ilen < info_buf.len() {
+                        info_buf[ilen] = b;
+                        ilen += 1;
+                    }
+                }
+            };
             let pfx = vol.mount_point_str();
             let fs_name = vol.fs_type_str();
 
-            for b in b"Volume: " { info_buf[ilen] = *b; ilen += 1; }
-            for b in pfx.as_bytes() { info_buf[ilen] = *b; ilen += 1; }
-            for b in b" [" { info_buf[ilen] = *b; ilen += 1; }
-            for b in fs_name.as_bytes() { info_buf[ilen] = *b; ilen += 1; }
-            for b in b"] | " { info_buf[ilen] = *b; ilen += 1; }
+            push_info(b"Volume: ");
+            push_info(pfx.as_bytes());
+            push_info(b" [");
+            push_info(fs_name.as_bytes());
+            push_info(b"] | ");
 
             let mut nb = [0u8; 16];
             let nl1 = format_num(vol.total_mb as usize, &mut nb);
-            for b in &nb[..nl1] { info_buf[ilen] = *b; ilen += 1; }
-            for b in b" MB total (" { info_buf[ilen] = *b; ilen += 1; }
+            push_info(&nb[..nl1]);
+            push_info(b" MB total (");
 
             let nl2 = format_num(vol.free_mb as usize, &mut nb);
-            for b in &nb[..nl2] { info_buf[ilen] = *b; ilen += 1; }
-            for b in b" MB livre) | " { info_buf[ilen] = *b; ilen += 1; }
+            push_info(&nb[..nl2]);
+            push_info(b" MB livre) | ");
 
             let mode_str = if self.is_read_only() { "Somente Leitura" } else { "Leitura e Escrita" };
-            for b in mode_str.as_bytes() { info_buf[ilen] = *b; ilen += 1; }
+            push_info(mode_str.as_bytes());
 
             if let Ok(istr) = core::str::from_utf8(&info_buf[..ilen]) {
                 draw_string(buf, screen_w, screen_h, istr, wx + 14, bar_y + 3, COLOR_TEXT_MUTED, Some(0x000F_172A));
