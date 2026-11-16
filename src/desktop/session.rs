@@ -163,6 +163,12 @@ impl AladdinSession {
                 self.browser_pid = Some(pid);
                 self.browser_win_id = None;
                 self.spawn_count += 1;
+                self.prev_buttons = 0;
+                for win_opt in self.wm.windows.iter_mut() {
+                    if let Some(win) = win_opt {
+                        win.is_dragging = false;
+                    }
+                }
                 self.term.push_line("Jinn Browser Ring 3 iniciado!", COLOR_EMERALD);
                 let mut p_buf = [0u8; 16];
                 let p_len = crate::compositor::format_num(pid, &mut p_buf);
@@ -535,6 +541,20 @@ impl AladdinSession {
                     let old_box = DirtyRect::new(old_x.saturating_sub(2), old_y.saturating_sub(2), win.width + 4, win.height + 4);
                     let new_box = DirtyRect::new(win.x.saturating_sub(2), win.y.saturating_sub(2), win.width + 4, win.height + 4);
                     drag_damage = Some(old_box.union(&new_box));
+                }
+            }
+        }
+
+        // Se o clique ocorre no Wingpanel (menu/status) ou na Dock, cancela arrastos residuais
+        if left_clicked && !prev_left_clicked {
+            if my < 26 || my >= screen_h.saturating_sub(54) {
+                if dragging_any {
+                    for win_opt in self.wm.windows.iter_mut() {
+                        if let Some(win) = win_opt {
+                            win.is_dragging = false;
+                        }
+                    }
+                    dragging_any = false;
                 }
             }
         }
