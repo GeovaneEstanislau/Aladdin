@@ -124,7 +124,12 @@ impl WindowManager {
         let mut win = Window::new_with_client_size(0, title, x, y, client_w, client_h);
         win.owner_pid = Some(owner_pid);
         let id = self.open_window(win)?;
-        self.client_buffers[id] = Some(alloc::vec![0x000F_172A; client_pixels]);
+        if let Some(ref mut buf) = self.client_buffers[id] {
+            buf.clear();
+            buf.resize(client_pixels, 0x000F_172A);
+        } else {
+            self.client_buffers[id] = Some(alloc::vec![0x000F_172A; client_pixels]);
+        }
         self.client_events[id].clear();
         Ok(id)
     }

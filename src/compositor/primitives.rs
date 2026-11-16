@@ -572,7 +572,17 @@ pub fn box_blur_rect(
         return;
     }
 
-    let mut scratch = alloc::vec![0u32; w * h];
+    let total_pixels = w * h;
+    const STATIC_SCRATCH_SIZE: usize = 1024 * 128; // 128K pixels (512 KiB em .bss)
+    static mut STATIC_SCRATCH: [u32; STATIC_SCRATCH_SIZE] = [0u32; STATIC_SCRATCH_SIZE];
+
+    let mut fallback_vec = alloc::vec::Vec::new();
+    let scratch: &mut [u32] = if total_pixels <= STATIC_SCRATCH_SIZE {
+        unsafe { &mut STATIC_SCRATCH[..total_pixels] }
+    } else {
+        fallback_vec.resize(total_pixels, 0u32);
+        &mut fallback_vec[..]
+    };
     let window_size = (2 * r + 1) as u32;
 
     // ── Passo 1: Blur Horizontal (de `buf` para `scratch`) ──

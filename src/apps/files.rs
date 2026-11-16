@@ -227,7 +227,10 @@ impl FileManagerApp {
         self.file_cache_count = 0;
         self.selected_index = None;
         self.current_page = 0;
-        self.cached_vol_valid.set(false); // Invalida estatísticas de disco para forçar atualização assíncrona
+        // IMP-01: Mantém estatísticas do volume em cache se já válidas, evitando I/O no render loop
+        if self.cached_vol_info.get().is_none() {
+            self.cached_vol_valid.set(false);
+        }
         let mut count = 0;
         let cache_ptr = self.file_cache.as_mut_ptr();
         let target = self.current_path_str();
