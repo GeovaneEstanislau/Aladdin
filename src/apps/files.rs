@@ -7,7 +7,7 @@
 use crate::compositor::*;
 use crate::font::*;
 use crate::contracts::vfs::VfsHost;
-use crate::contracts::storage::StorageHost;
+use crate::contracts::storage::{StorageHost, VolumeDisplayInfo};
 use crate::contracts::process::ProcessHost;
 
 pub const MAX_FILES: usize = 64;
@@ -93,6 +93,10 @@ pub struct FileManagerApp {
     pub preview_filename_len: usize,
     pub preview_content: [u8; 256],
     pub preview_content_len: usize,
+
+    // IMP-01: Cache assíncrono de capacidade para desacoplar statvfs do render loop
+    pub cached_vol_info: core::cell::Cell<Option<VolumeDisplayInfo>>,
+    pub cached_vol_valid: core::cell::Cell<bool>,
 }
 
 impl FileManagerApp {
@@ -117,6 +121,8 @@ impl FileManagerApp {
             preview_filename_len: 0,
             preview_content: [0; 256],
             preview_content_len: 0,
+            cached_vol_info: core::cell::Cell::new(None),
+            cached_vol_valid: core::cell::Cell::new(false),
         };
         app.current_path[0] = b'/';
         app.current_path[1] = b'd';
@@ -221,6 +227,7 @@ impl FileManagerApp {
         self.file_cache_count = 0;
         self.selected_index = None;
         self.current_page = 0;
+        self.cached_vol_valid.set(false); // Invalida estatísticas de disco para forçar atualização assíncrona
         let mut count = 0;
         let cache_ptr = self.file_cache.as_mut_ptr();
         let target = self.current_path_str();
@@ -248,6 +255,7 @@ impl FileManagerApp {
 
     pub fn select_volume(&mut self, vol_idx: usize, vfs: &dyn VfsHost) {
         self.active_volume = vol_idx;
+        self.cached_vol_valid.set(false);
         self.close_dialog();
         self.selected_index = None;
 
@@ -1068,8 +1076,14 @@ impl FileManagerApp {
         draw_rect_outline(buf, screen_w, screen_h, wx + 8, bar_y, ww - 16, 28, COLOR_BORDER);
 
         // Linha 1: Capacidade do Volume ativo via StorageHost
-        let vol_opt = storage.get_volume(self.active_volume);
-        if let Some(vol) = vol_opt {
+        // IMP-01: Desacopla statvfs síncrono do render loop gráfico através de cache em memória
+        if !self.cached_vol_valid.get() {
+            self.cached_vol_info.set(storage.get_volume(self.active_volume));
+            self.cached_vol_valid.set(true);
+        }
+
+        let vol_cached = self.cached_vol_info.get();
+        if let Some(vol) = vol_cached.as_ref() {
             let mut info_buf = [0u8; 160];
             let mut ilen = 0;
             let mut push_info = |slice: &[u8]| {
