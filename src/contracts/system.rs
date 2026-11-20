@@ -61,6 +61,30 @@ pub trait SystemHost {
     fn toggle_jinnwall_profile(&self) -> JinnWallProfile;
     fn reboot(&self) -> !;
 
+    // ── Ciclo de Energia e Atualização Offline no Desligamento ──────────────────
+    fn shutdown(&self) -> ! {
+        self.reboot();
+    }
+
+    fn set_display_power(&self, _on: bool) {}
+
+    fn has_pending_updates(&self) -> bool {
+        true
+    }
+
+    fn pending_updates_count(&self) -> usize {
+        2
+    }
+
+    fn stage_update_package(&self, _pkg_name: &str) -> bool {
+        true
+    }
+
+    fn apply_offline_updates_and_shutdown(&self) -> ! {
+        self.set_display_power(false);
+        self.shutdown();
+    }
+
     // Métodos opcionais de integração com o subsistema de armazenamento (StorageHost)
     fn storage_disk_count(&self) -> usize {
         crate::contracts::storage::DEFAULT_STORAGE_HOST.disk_count()

@@ -46,9 +46,11 @@ pub struct AladdinSession {
     pub about: AboutApp,
     pub settings: SettingsApp,
     pub disks: DiskManagerApp,
+    pub software_mgr: SoftwareManagerApp,
     pub mode: CapabilityMode,
     pub start_menu_open: bool,
     pub quick_settings_open: bool,
+    pub shutdown_prompt_open: bool,
     pub app_switcher_open: bool,
     pub app_switcher_index: usize,
     pub notifications: NotificationCenter,
@@ -77,9 +79,11 @@ impl AladdinSession {
             about: AboutApp::new(),
             settings: SettingsApp::new(),
             disks: DiskManagerApp::new(),
+            software_mgr: SoftwareManagerApp::new(),
             mode: CapabilityMode::Balanced,
             start_menu_open: false,
             quick_settings_open: false,
+            shutdown_prompt_open: false,
             app_switcher_open: false,
             app_switcher_index: 0,
             notifications: NotificationCenter::new(),
@@ -280,6 +284,11 @@ impl AladdinSession {
         w5.is_open = false;
         self.wm.windows[5] = Some(w5);
 
+        // Janela 6: Gerenciador de Softwares e Atualizacoes Ring 3 (fechada)
+        let mut w6 = Window::new(6, "Softwares & Atualizacoes Ring 3", 160, 110, 520, 310);
+        w6.is_open = false;
+        self.wm.windows[6] = Some(w6);
+
         // Terminal como janela inicial no topo do Z-order
         self.wm.order = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 1];
     }
@@ -425,6 +434,9 @@ impl AladdinSession {
                             let storage_adapter = crate::contracts::storage::SystemHostStorageAdapter(sys);
                             self.disks.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, &storage_adapter);
                         }
+                        6 => {
+                            self.software_mgr.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, sys);
+                        }
                         _ => {}
                     }
                 }
@@ -452,6 +464,53 @@ impl AladdinSession {
         // 10. Alternador de Tarefas / App Switcher HUD (se ativo)
         if self.app_switcher_open {
             AppSwitcherHUD::render(buf, screen_w, screen_h, mouse_x, mouse_y, &self.wm, self.app_switcher_index);
+        }
+
+        // 11. Modal de Confirmacao de Desligamento com Atualizacao Offline
+        if self.shutdown_prompt_open {
+            let modal_w = 480;
+            let modal_h = 220;
+            let modal_x = (screen_w / 2).saturating_sub(modal_w / 2);
+            let modal_y = (screen_h / 2).saturating_sub(modal_h / 2);
+
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, modal_x, modal_y, modal_w, modal_h, 12, 6, COLOR_SHADOW);
+            fill_rounded_rect(buf, screen_w, screen_h, modal_x, modal_y, modal_w, modal_h, 10, COLOR_SURFACE_L1);
+            draw_rounded_outline(buf, screen_w, screen_h, modal_x, modal_y, modal_w, modal_h, 10, COLOR_CYAN_NEON);
+
+            fill_rounded_top(buf, screen_w, screen_h, modal_x + 1, modal_y + 1, modal_w - 2, 32, 9, COLOR_SURFACE_L0);
+            draw_char(buf, screen_w, screen_h, b'!', modal_x + 14, modal_y + 10, COLOR_AMBER, Some(COLOR_SURFACE_L0));
+            draw_string(buf, screen_w, screen_h, "ATUALIZACOES PENDENTES DETECTADAS", modal_x + 28, modal_y + 10, COLOR_WHITE, Some(COLOR_SURFACE_L0));
+            draw_line(buf, screen_w, screen_h, modal_x as isize, (modal_y + 33) as isize, (modal_x + modal_w) as isize, (modal_y + 33) as isize, COLOR_BORDER_SUBTLE);
+
+            draw_string(buf, screen_w, screen_h, "Existem 2 atualizacoes de sistema baixadas em 2o plano.", modal_x + 18, modal_y + 44, COLOR_TEXT_PRI, Some(COLOR_SURFACE_L1));
+            draw_string(buf, screen_w, screen_h, "Deseja aplicar agora com a TELA DESLIGADA antes de desligar?", modal_x + 18, modal_y + 60, COLOR_CYAN_NEON, Some(COLOR_SURFACE_L1));
+            draw_string(buf, screen_w, screen_h, "O display sera apagado para economizar energia e eliminar lentidao,", modal_x + 18, modal_y + 76, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
+            draw_string(buf, screen_w, screen_h, "concluindo o desligamento automatico ao finalizar com seguranca.", modal_x + 18, modal_y + 90, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
+
+            // Botao 1: Atualizar com Tela Desligada e Desligar (Recomendado)
+            let b1_y = modal_y + 114;
+            let is_b1_hover = mouse_x >= modal_x + 18 && mouse_x < modal_x + modal_w - 18 && mouse_y >= b1_y && mouse_y < b1_y + 28;
+            let b1_bg = if is_b1_hover { 0x0005_9669 } else { 0x0004_7857 };
+            fill_rounded_rect(buf, screen_w, screen_h, modal_x + 18, b1_y, modal_w - 36, 28, 5, b1_bg);
+            draw_rounded_outline(buf, screen_w, screen_h, modal_x + 18, b1_y, modal_w - 36, 28, 5, COLOR_EMERALD);
+            draw_string(buf, screen_w, screen_h, "[1] Aplicar c/ Tela Desligada e Desligar (Recomendado)", modal_x + 28, b1_y + 8, COLOR_WHITE, Some(b1_bg));
+
+            // Botao 2: Desligar Imediatamente (sem atualizar)
+            let b2_y = b1_y + 34;
+            let half_btn_w = (modal_w - 44) / 2;
+            let is_b2_hover = mouse_x >= modal_x + 18 && mouse_x < modal_x + 18 + half_btn_w && mouse_y >= b2_y && mouse_y < b2_y + 26;
+            let b2_bg = if is_b2_hover { 0x00B9_1C1C } else { COLOR_SURFACE_L2 };
+            fill_rounded_rect(buf, screen_w, screen_h, modal_x + 18, b2_y, half_btn_w, 26, 4, b2_bg);
+            draw_rounded_outline(buf, screen_w, screen_h, modal_x + 18, b2_y, half_btn_w, 26, 4, COLOR_AMBER);
+            draw_string(buf, screen_w, screen_h, "[2] Desligar s/ Atualizar", modal_x + 26, b2_y + 7, if is_b2_hover { COLOR_WHITE } else { COLOR_AMBER }, Some(b2_bg));
+
+            // Botao 3: Cancelar
+            let b3_x = modal_x + 26 + half_btn_w;
+            let is_b3_hover = mouse_x >= b3_x && mouse_x < b3_x + half_btn_w && mouse_y >= b2_y && mouse_y < b2_y + 26;
+            let b3_bg = if is_b3_hover { COLOR_SURFACE_HOVER } else { COLOR_SURFACE_L2 };
+            fill_rounded_rect(buf, screen_w, screen_h, b3_x, b2_y, half_btn_w, 26, 4, b3_bg);
+            draw_rounded_outline(buf, screen_w, screen_h, b3_x, b2_y, half_btn_w, 26, 4, COLOR_BORDER);
+            draw_string(buf, screen_w, screen_h, "[3] Cancelar", b3_x + 36, b2_y + 7, COLOR_TEXT_PRI, Some(b3_bg));
         }
     }
 
@@ -576,6 +635,42 @@ impl AladdinSession {
 
         // Clique com botão esquerdo (transição de 0 para 1)
         if left_clicked && !prev_left_clicked && !dragging_any {
+            // Modal de Confirmação de Desligamento com Atualizações Offline
+            if self.shutdown_prompt_open {
+                let modal_w = 480;
+                let modal_h = 220;
+                let modal_x = (screen_w / 2).saturating_sub(modal_w / 2);
+                let modal_y = (screen_h / 2).saturating_sub(modal_h / 2);
+
+                let b1_y = modal_y + 114;
+                if mx >= modal_x + 18 && mx < modal_x + modal_w - 18 && my >= b1_y && my < b1_y + 28 {
+                    // Opção 1: Atualizar com tela desligada e desligar!
+                    self.shutdown_prompt_open = false;
+                    sys.apply_offline_updates_and_shutdown();
+                }
+
+                let b2_y = b1_y + 34;
+                let half_btn_w = (modal_w - 44) / 2;
+                if mx >= modal_x + 18 && mx < modal_x + 18 + half_btn_w && my >= b2_y && my < b2_y + 26 {
+                    // Opção 2: Desligar sem atualizar
+                    self.shutdown_prompt_open = false;
+                    sys.shutdown();
+                }
+
+                let b3_x = modal_x + 26 + half_btn_w;
+                if mx >= b3_x && mx < b3_x + half_btn_w && my >= b2_y && my < b2_y + 26 {
+                    // Opção 3: Cancelar
+                    self.shutdown_prompt_open = false;
+                    return (false, None);
+                }
+
+                if mx < modal_x || mx >= modal_x + modal_w || my < modal_y || my >= modal_y + modal_h {
+                    self.shutdown_prompt_open = false;
+                    return (false, None);
+                }
+                return (false, None);
+            }
+
             // 0. Interação prioritária com Notificações Toast (sem interceptar coluna de atalhos da direita)
             let is_shortcut_zone = mx >= screen_w.saturating_sub(76);
             if !is_shortcut_zone && self.notifications.handle_click(mx, my, screen_w, sys.stats().current_tick) {
@@ -634,6 +729,15 @@ impl AladdinSession {
                     QuickSettingsAction::Reboot => {
                         sys.reboot();
                     }
+                    QuickSettingsAction::Shutdown => {
+                        if sys.has_pending_updates() {
+                            self.shutdown_prompt_open = true;
+                            self.quick_settings_open = false;
+                            return (false, None);
+                        } else {
+                            sys.shutdown();
+                        }
+                    }
                     QuickSettingsAction::ExitShell => {
                         self.should_exit = true;
                         return (false, None);
@@ -678,7 +782,7 @@ impl AladdinSession {
             if self.start_menu_open {
                 if mx >= MENU_X && mx <= MENU_X + MENU_W && my >= MENU_Y && my <= MENU_Y + MENU_H {
                     if my >= MENU_Y + 28 {
-                        let item_idx = (my - (MENU_Y + 28)) / 27;
+                        let item_idx = (my - (MENU_Y + 28)) / 26;
                         match item_idx {
                             0 => {
                                 if let Some(w) = self.wm.windows[0].as_mut() { w.is_open = true; w.is_minimized = false; }
@@ -701,15 +805,26 @@ impl AladdinSession {
                                 self.wm.bring_to_front(5);
                             }
                             5 => {
+                                if let Some(w) = self.wm.windows[6].as_mut() { w.is_open = true; w.is_minimized = false; }
+                                self.wm.bring_to_front(6);
+                            }
+                            6 => {
                                 if let Some(w) = self.wm.windows[2].as_mut() { w.is_open = true; w.is_minimized = false; }
                                 self.wm.bring_to_front(2);
                             }
-                            6 => {
+                            7 => {
                                 sys.cycle_storage_profile();
                                 self.notifications.post(b'D', "Perfil Storage", sys.storage_profile_name(), COLOR_AMBER, 250, sys.stats().current_tick);
                             }
-                            7 => sys.reboot(),
-                            8 => self.should_exit = true,
+                            8 => sys.reboot(),
+                            9 => {
+                                if sys.has_pending_updates() {
+                                    self.shutdown_prompt_open = true;
+                                } else {
+                                    sys.shutdown();
+                                }
+                            }
+                            10 => self.should_exit = true,
                             _ => {}
                         }
                     }

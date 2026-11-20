@@ -8,7 +8,7 @@ use crate::font::*;
 use crate::contracts::system::{CapabilityMode, JinnWallProfile, SystemHost};
 
 pub const QUICK_SETTINGS_W: usize = 310;
-pub const QUICK_SETTINGS_H: usize = 274;
+pub const QUICK_SETTINGS_H: usize = 282;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuickSettingsAction {
@@ -17,6 +17,7 @@ pub enum QuickSettingsAction {
     ToggleFirewall,
     CycleStorage,
     Reboot,
+    Shutdown,
     ExitShell,
 }
 
@@ -129,28 +130,36 @@ impl QuickSettingsPopover {
         draw_rounded_outline(buf, screen_w, screen_h, popover_x + 160, fw_btn_y, 130, 22, 4, COLOR_BORDER);
         draw_string(buf, screen_w, screen_h, "Ciclar JSA", popover_x + 185, fw_btn_y + 5, COLOR_TEXT_PRI, Some(jsa_bg));
 
-        // 7. Seção 4: Botões de Ação do Sistema
+        // 7. Seção 4: Botões de Ação do Sistema (Reiniciar, Desligar, Sair Shell)
         let act_btn_y = popover_y + 210;
-        let half_w = (QUICK_SETTINGS_W - 30) / 2;
+        let third_w = (QUICK_SETTINGS_W - 36) / 3;
 
         // Botão Reiniciar
         let r_btn_x = popover_x + 12;
-        let is_r_hover = mouse_x >= r_btn_x && mouse_x < r_btn_x + half_w && mouse_y >= act_btn_y && mouse_y < act_btn_y + 26;
+        let is_r_hover = mouse_x >= r_btn_x && mouse_x < r_btn_x + third_w && mouse_y >= act_btn_y && mouse_y < act_btn_y + 26;
         let r_bg = if is_r_hover { 0x00D9_7706 } else { COLOR_SURFACE_L2 };
-        fill_rounded_rect(buf, screen_w, screen_h, r_btn_x, act_btn_y, half_w, 26, 4, r_bg);
-        draw_rounded_outline(buf, screen_w, screen_h, r_btn_x, act_btn_y, half_w, 26, 4, COLOR_AMBER);
-        draw_string(buf, screen_w, screen_h, "Reiniciar", r_btn_x + 24, act_btn_y + 7, if is_r_hover { COLOR_WHITE } else { COLOR_AMBER }, Some(r_bg));
+        fill_rounded_rect(buf, screen_w, screen_h, r_btn_x, act_btn_y, third_w, 26, 4, r_bg);
+        draw_rounded_outline(buf, screen_w, screen_h, r_btn_x, act_btn_y, third_w, 26, 4, COLOR_AMBER);
+        draw_string(buf, screen_w, screen_h, "Reboot", r_btn_x + 18, act_btn_y + 7, if is_r_hover { COLOR_WHITE } else { COLOR_AMBER }, Some(r_bg));
+
+        // Botão Desligar (Shutdown)
+        let d_btn_x = r_btn_x + third_w + 6;
+        let is_d_hover = mouse_x >= d_btn_x && mouse_x < d_btn_x + third_w && mouse_y >= act_btn_y && mouse_y < act_btn_y + 26;
+        let d_bg = if is_d_hover { 0x00B9_1C1C } else { 0x007F_1D1D };
+        fill_rounded_rect(buf, screen_w, screen_h, d_btn_x, act_btn_y, third_w, 26, 4, d_bg);
+        draw_rounded_outline(buf, screen_w, screen_h, d_btn_x, act_btn_y, third_w, 26, 4, 0x00F8_7171);
+        draw_string(buf, screen_w, screen_h, "Desligar", d_btn_x + 14, act_btn_y + 7, COLOR_WHITE, Some(d_bg));
 
         // Botão Sair para Shell
-        let s_btn_x = popover_x + 18 + half_w;
-        let is_s_hover = mouse_x >= s_btn_x && mouse_x < s_btn_x + half_w && mouse_y >= act_btn_y && mouse_y < act_btn_y + 26;
+        let s_btn_x = d_btn_x + third_w + 6;
+        let is_s_hover = mouse_x >= s_btn_x && mouse_x < s_btn_x + third_w && mouse_y >= act_btn_y && mouse_y < act_btn_y + 26;
         let s_bg = if is_s_hover { 0x00DC_2626 } else { COLOR_RUBY };
-        fill_rounded_rect(buf, screen_w, screen_h, s_btn_x, act_btn_y, half_w, 26, 4, s_bg);
-        draw_rounded_outline(buf, screen_w, screen_h, s_btn_x, act_btn_y, half_w, 26, 4, 0x00F8_7171);
-        draw_string(buf, screen_w, screen_h, "[X] Sair Shell", s_btn_x + 16, act_btn_y + 7, COLOR_WHITE, Some(s_bg));
+        fill_rounded_rect(buf, screen_w, screen_h, s_btn_x, act_btn_y, third_w, 26, 4, s_bg);
+        draw_rounded_outline(buf, screen_w, screen_h, s_btn_x, act_btn_y, third_w, 26, 4, 0x00F8_7171);
+        draw_string(buf, screen_w, screen_h, "[X] Shell", s_btn_x + 10, act_btn_y + 7, COLOR_WHITE, Some(s_bg));
 
         // Rodapé com versão
-        draw_string(buf, screen_w, screen_h, "Aladdin Desktop 7.0 — Fluido e Leve", popover_x + 16, popover_y + 248, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
+        draw_string(buf, screen_w, screen_h, "Aladdin Desktop 7.0 — Fluido e Leve", popover_x + 16, popover_y + 256, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
     }
 
     pub fn handle_click(
@@ -197,14 +206,18 @@ impl QuickSettingsPopover {
 
         // 3. Ações do Sistema
         let act_btn_y = popover_y + 210;
-        let half_w = (QUICK_SETTINGS_W - 30) / 2;
+        let third_w = (QUICK_SETTINGS_W - 36) / 3;
         if my >= act_btn_y && my < act_btn_y + 26 {
             let r_btn_x = popover_x + 12;
-            if mx >= r_btn_x && mx < r_btn_x + half_w {
+            if mx >= r_btn_x && mx < r_btn_x + third_w {
                 return QuickSettingsAction::Reboot;
             }
-            let s_btn_x = popover_x + 18 + half_w;
-            if mx >= s_btn_x && mx < s_btn_x + half_w {
+            let d_btn_x = r_btn_x + third_w + 6;
+            if mx >= d_btn_x && mx < d_btn_x + third_w {
+                return QuickSettingsAction::Shutdown;
+            }
+            let s_btn_x = d_btn_x + third_w + 6;
+            if mx >= s_btn_x && mx < s_btn_x + third_w {
                 return QuickSettingsAction::ExitShell;
             }
         }
@@ -212,4 +225,3 @@ impl QuickSettingsPopover {
         QuickSettingsAction::None
     }
 }
-
