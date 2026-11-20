@@ -553,10 +553,17 @@ impl AladdinSession {
             }
         }
 
-        // Se o clique ocorre no Wingpanel (menu/status) ou na Dock, cancela arrastos residuais
+        // Auto-recuperação de arrasto: se ocorreu novo clique, cancela arrastos residuais fora da barra de título
         if left_clicked && !prev_left_clicked {
-            if my < 26 || my >= screen_h.saturating_sub(54) {
-                if dragging_any {
+            if dragging_any {
+                let in_dragged_title = self.wm.windows.iter().any(|w_opt| {
+                    if let Some(w) = w_opt {
+                        w.is_dragging && w.is_in_title_bar(mx, my)
+                    } else {
+                        false
+                    }
+                });
+                if !in_dragged_title {
                     for win_opt in self.wm.windows.iter_mut() {
                         if let Some(win) = win_opt {
                             win.is_dragging = false;
@@ -569,8 +576,9 @@ impl AladdinSession {
 
         // Clique com botão esquerdo (transição de 0 para 1)
         if left_clicked && !prev_left_clicked && !dragging_any {
-            // 0. Interação prioritária com Notificações Toast
-            if self.notifications.handle_click(mx, my, screen_w, sys.stats().current_tick) {
+            // 0. Interação prioritária com Notificações Toast (sem interceptar coluna de atalhos da direita)
+            let is_shortcut_zone = mx >= screen_w.saturating_sub(76);
+            if !is_shortcut_zone && self.notifications.handle_click(mx, my, screen_w, sys.stats().current_tick) {
                 return (false, None);
             }
 

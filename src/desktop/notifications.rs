@@ -10,7 +10,7 @@ pub const MAX_NOTIFICATIONS: usize = 3;
 pub const TOAST_WIDTH: usize = 310;
 pub const TOAST_HEIGHT: usize = 44;
 pub const TOAST_MARGIN_TOP: usize = 32;
-pub const TOAST_MARGIN_RIGHT: usize = 12;
+pub const TOAST_MARGIN_RIGHT: usize = 84; // Posiciona os toasts à esquerda da coluna de atalhos da área de trabalho
 
 #[derive(Clone, Copy)]
 pub struct ToastNotification {
