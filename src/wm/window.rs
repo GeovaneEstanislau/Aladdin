@@ -5,6 +5,22 @@ use crate::compositor::ClipRect;
 
 pub const TITLE_BAR_HEIGHT: usize = 24;
 pub const BTN_SIZE: usize = 16;
+pub const RESIZE_GRIP_THICKNESS: usize = 6;
+pub const MIN_WINDOW_WIDTH: usize = 200;
+pub const MIN_WINDOW_HEIGHT: usize = 140;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResizeGrip {
+    None,
+    Left,
+    Right,
+    Top,
+    Bottom,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Window {
@@ -27,6 +43,14 @@ pub struct Window {
     pub is_dragging: bool,
     pub drag_offset_x: usize,
     pub drag_offset_y: usize,
+    pub is_resizing: bool,
+    pub resize_grip: ResizeGrip,
+    pub resize_start_mouse_x: usize,
+    pub resize_start_mouse_y: usize,
+    pub resize_start_x: usize,
+    pub resize_start_y: usize,
+    pub resize_start_w: usize,
+    pub resize_start_h: usize,
     pub can_minimize: bool,
     pub can_maximize: bool,
     pub can_close: bool,
@@ -71,6 +95,14 @@ impl Window {
             is_dragging: false,
             drag_offset_x: 0,
             drag_offset_y: 0,
+            is_resizing: false,
+            resize_grip: ResizeGrip::None,
+            resize_start_mouse_x: 0,
+            resize_start_mouse_y: 0,
+            resize_start_x: x,
+            resize_start_y: y,
+            resize_start_w: width,
+            resize_start_h: height,
             can_minimize: true,
             can_maximize: true,
             can_close: true,
@@ -206,6 +238,41 @@ impl Window {
         let client_x0 = self.x + 1;
         let client_x1 = (self.x + self.width).saturating_sub(1);
         px >= client_x0 && px < client_x1 && py >= client_y0 && py < client_y1
+    }
+
+    /// Retorna a zona de agarre para redimensionamento (resize grip de 6px)
+    pub fn resize_grip_at(&self, px: usize, py: usize) -> ResizeGrip {
+        if !self.is_open || self.is_minimized || self.is_maximized || self.is_snapped_left || self.is_snapped_right {
+            return ResizeGrip::None;
+        }
+        if px < self.x || px >= self.x + self.width || py < self.y || py >= self.y + self.height {
+            return ResizeGrip::None;
+        }
+
+        let at_left = px < self.x + RESIZE_GRIP_THICKNESS;
+        let at_right = px >= (self.x + self.width).saturating_sub(RESIZE_GRIP_THICKNESS);
+        let at_top = py < self.y + RESIZE_GRIP_THICKNESS;
+        let at_bottom = py >= (self.y + self.height).saturating_sub(RESIZE_GRIP_THICKNESS);
+
+        if at_top && at_left {
+            ResizeGrip::TopLeft
+        } else if at_top && at_right {
+            ResizeGrip::TopRight
+        } else if at_bottom && at_left {
+            ResizeGrip::BottomLeft
+        } else if at_bottom && at_right {
+            ResizeGrip::BottomRight
+        } else if at_left {
+            ResizeGrip::Left
+        } else if at_right {
+            ResizeGrip::Right
+        } else if at_top {
+            ResizeGrip::Top
+        } else if at_bottom {
+            ResizeGrip::Bottom
+        } else {
+            ResizeGrip::None
+        }
     }
 
     pub fn toggle_maximize(&mut self, screen_w: usize, screen_h: usize, top_panel_h: usize, dock_h: usize) -> DirtyRect {

@@ -67,6 +67,8 @@ pub struct AladdinSession {
     pub browser_win_id: Option<usize>,
     pub wallpaper_anim_frame: u64,
     pub last_user_activity_tick: u64,
+    pub click_held_frames: u32,
+    pub drag_stuck_frames: u32,
 }
 
 impl AladdinSession {
@@ -100,6 +102,8 @@ impl AladdinSession {
             browser_win_id: None,
             wallpaper_anim_frame: 0,
             last_user_activity_tick: 0,
+            click_held_frames: 0,
+            drag_stuck_frames: 0,
         };
 
         session.init_default_windows();
@@ -525,32 +529,96 @@ impl AladdinSession {
         screen_w: usize,
         screen_h: usize,
     ) -> (bool, Option<DirtyRect>) {
-        let left_clicked = (buttons & 1) != 0;
+        let mut left_clicked = (buttons & 1) != 0;
         let prev_left_clicked = (self.prev_buttons & 1) != 0;
-        self.prev_buttons = buttons;
+
+        // Auto-recuperação de botão preso (watchdog anti-deadlock)
+        if left_clicked {
+            self.click_held_frames = self.click_held_frames.saturating_add(1);
+            if self.click_held_frames > 120 {
+                // Mais de 120 frames com botão esquerdo retido sem evento de soltura: auto-recupera
+                left_clicked = false;
+                self.prev_buttons = 0;
+                self.click_held_frames = 0;
+            } else {
+                self.prev_buttons = buttons;
+            }
+        } else {
+            self.click_held_frames = 0;
+            self.prev_buttons = 0;
+        }
 
         // Se soltou o botão esquerdo, encerra arrasto e avalia encaixe (Window Snapping)
         if !left_clicked {
-            for win_opt in self.wm.windows.iter_mut() {
+            let mut pending_resizes: [Option<crate::contracts::input::ClientWindowEvent>; 16] = [None; 16];
+            for (win_idx, win_opt) in self.wm.windows.iter_mut().enumerate() {
                 if let Some(win) = win_opt {
+                    if win.is_resizing {
+                        win.is_resizing = false;
+                        win.resize_grip = crate::wm::window::ResizeGrip::None;
+                        if win.owner_pid.is_some() {
+                            let client_w = win.client_width();
+                            let client_h = win.client_height();
+                            pending_resizes[win_idx] = Some(crate::contracts::input::ClientWindowEvent {
+                                event_type: crate::contracts::input::EVENT_WINDOW_RESIZE,
+                                win_id: win_idx as u32,
+                                x: client_w as i32,
+                                y: client_h as i32,
+                                button_or_key: 0,
+                                modifiers: 0,
+                                timestamp: sys.stats().current_tick,
+                            });
+                        }
+                    }
+
                     if win.is_dragging {
                         win.is_dragging = false;
 
                         // Aplica o encaixe (Snap) se foi solto próximo aos limites da tela
+                        let mut snapped = false;
                         if mx <= 16 {
                             win.snap_left(screen_w, screen_h, 26, 54);
                             self.notifications.post(b'<', "Janela Encaixada", "Ajustada à metade esquerda da tela", COLOR_CYAN_NEON, 200, sys.stats().current_tick);
+                            snapped = true;
                         } else if mx >= screen_w.saturating_sub(16) {
                             win.snap_right(screen_w, screen_h, 26, 54);
                             self.notifications.post(b'>', "Janela Encaixada", "Ajustada à metade direita da tela", COLOR_CYAN_NEON, 200, sys.stats().current_tick);
+                            snapped = true;
                         } else if my <= 32 {
                             win.toggle_maximize(screen_w, screen_h, 26, 54);
                             self.notifications.post(b'^', "Janela Maximizada", "Expandida para preencher a tela", COLOR_EMERALD, 200, sys.stats().current_tick);
+                            snapped = true;
+                        }
+
+                        if snapped && win.owner_pid.is_some() {
+                            let client_w = win.client_width();
+                            let client_h = win.client_height();
+                            pending_resizes[win_idx] = Some(crate::contracts::input::ClientWindowEvent {
+                                event_type: crate::contracts::input::EVENT_WINDOW_RESIZE,
+                                win_id: win_idx as u32,
+                                x: client_w as i32,
+                                y: client_h as i32,
+                                button_or_key: 0,
+                                modifiers: 0,
+                                timestamp: sys.stats().current_tick,
+                            });
                         }
                     }
                 }
             }
+
+            for (idx, ev_opt) in pending_resizes.iter().enumerate() {
+                if let Some(ev) = ev_opt {
+                    let pixels = (ev.x as usize) * (ev.y as usize);
+                    if pixels > 0 && pixels <= crate::wm::manager::WindowManager::MAX_CLIENT_BUFFER_PIXELS {
+                        self.wm.client_buffers[idx] = Some(alloc::vec![0x0018_1825; pixels]);
+                    }
+                    self.wm.push_client_event(idx, *ev);
+                }
+            }
+
             self.active_snap_preview = None;
+            self.drag_stuck_frames = 0;
 
             if prev_left_clicked {
                 if let Some(win_idx) = self.wm.find_window_at(mx, my) {
@@ -612,6 +680,80 @@ impl AladdinSession {
             }
         }
 
+        // Atualiza redimensionamento de janela ativo
+        let mut resizing_any = false;
+        for win_opt in self.wm.windows.iter_mut() {
+            if let Some(win) = win_opt {
+                if win.is_resizing {
+                    resizing_any = true;
+                    let dx = mx as isize - win.resize_start_mouse_x as isize;
+                    let dy = my as isize - win.resize_start_mouse_y as isize;
+                    use crate::wm::window::{ResizeGrip, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT};
+
+                    let old_x = win.x;
+                    let old_y = win.y;
+                    let old_w = win.width;
+                    let old_h = win.height;
+
+                    match win.resize_grip {
+                        ResizeGrip::Left | ResizeGrip::TopLeft | ResizeGrip::BottomLeft => {
+                            let orig_right = win.resize_start_x + win.resize_start_w;
+                            let target_w = (win.resize_start_w as isize - dx).max(MIN_WINDOW_WIDTH as isize) as usize;
+                            let clamped_w = target_w.min(orig_right);
+                            win.width = clamped_w;
+                            win.x = orig_right.saturating_sub(clamped_w);
+                        }
+                        ResizeGrip::Right | ResizeGrip::TopRight | ResizeGrip::BottomRight => {
+                            let max_w = screen_w.saturating_sub(win.x);
+                            let target_w = (win.resize_start_w as isize + dx).max(MIN_WINDOW_WIDTH as isize) as usize;
+                            win.width = target_w.min(max_w);
+                        }
+                        _ => {}
+                    }
+
+                    match win.resize_grip {
+                        ResizeGrip::Top | ResizeGrip::TopLeft | ResizeGrip::TopRight => {
+                            let orig_bottom = win.resize_start_y + win.resize_start_h;
+                            let target_h = (win.resize_start_h as isize - dy).max(MIN_WINDOW_HEIGHT as isize) as usize;
+                            let clamped_h = target_h.min(orig_bottom.saturating_sub(26));
+                            win.height = clamped_h;
+                            win.y = orig_bottom.saturating_sub(clamped_h);
+                        }
+                        ResizeGrip::Bottom | ResizeGrip::BottomLeft | ResizeGrip::BottomRight => {
+                            let max_h = (screen_h.saturating_sub(54)).saturating_sub(win.y);
+                            let target_h = (win.resize_start_h as isize + dy).max(MIN_WINDOW_HEIGHT as isize) as usize;
+                            win.height = target_h.min(max_h);
+                        }
+                        _ => {}
+                    }
+
+                    let old_box = DirtyRect::new(old_x.saturating_sub(2), old_y.saturating_sub(2), old_w + 4, old_h + 4);
+                    let new_box = DirtyRect::new(win.x.saturating_sub(2), win.y.saturating_sub(2), win.width + 4, win.height + 4);
+                    let union_box = old_box.union(&new_box);
+                    drag_damage = match drag_damage {
+                        Some(d) => Some(d.union(&union_box)),
+                        None => Some(union_box),
+                    };
+                }
+            }
+        }
+
+        if dragging_any {
+            self.drag_stuck_frames = self.drag_stuck_frames.saturating_add(1);
+            if self.drag_stuck_frames > 180 {
+                // Arraste retido por mais de 180 frames: auto-recupera cancelando arrasto
+                for win_opt in self.wm.windows.iter_mut() {
+                    if let Some(win) = win_opt {
+                        win.is_dragging = false;
+                    }
+                }
+                dragging_any = false;
+                self.drag_stuck_frames = 0;
+            }
+        } else {
+            self.drag_stuck_frames = 0;
+        }
+
         // Auto-recuperação de arrasto: se ocorreu novo clique, cancela arrastos residuais fora da barra de título
         if left_clicked && !prev_left_clicked {
             if dragging_any {
@@ -634,7 +776,7 @@ impl AladdinSession {
         }
 
         // Clique com botão esquerdo (transição de 0 para 1)
-        if left_clicked && !prev_left_clicked && !dragging_any {
+        if left_clicked && !prev_left_clicked && !dragging_any && !resizing_any {
             // Modal de Confirmação de Desligamento com Atualizações Offline
             if self.shutdown_prompt_open {
                 let modal_w = 480;
@@ -1023,6 +1165,20 @@ impl AladdinSession {
                             }
                         }
                         return (false, Some(damage));
+                    }
+
+                    // Grip de redimensionamento (bordas e cantos de 6px)
+                    let grip = win.resize_grip_at(mx, my);
+                    if grip != crate::wm::window::ResizeGrip::None {
+                        win.is_resizing = true;
+                        win.resize_grip = grip;
+                        win.resize_start_mouse_x = mx;
+                        win.resize_start_mouse_y = my;
+                        win.resize_start_x = win.x;
+                        win.resize_start_y = win.y;
+                        win.resize_start_w = win.width;
+                        win.resize_start_h = win.height;
+                        return (true, None);
                     }
 
                     // Início de arrasto pela barra de título
