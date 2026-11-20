@@ -964,9 +964,13 @@ pub fn render_wallpaper(
             // 11. Aurora Wavefield (Vídeo / Motion)
             render_aurora_wavefield_wallpaper(buf, screen_w, screen_h, tick);
         }
+        12 => {
+            // 12. Jinn Sunset Cathedral (Crepúsculo Oficial)
+            render_jinn_sunset_wallpaper(buf, screen_w, screen_h, tick);
+        }
         _ => {
-            // 0: Cyber-Aurora (Padrão)
-            render_procedural_wallpaper(buf, screen_w, screen_h, mode);
+            // 0: Wallpaper Padrão Oficial do Jinn OS (Sunset Cathedral)
+            render_jinn_sunset_wallpaper(buf, screen_w, screen_h, tick);
         }
     }
 }
@@ -1506,6 +1510,251 @@ pub fn render_procedural_wallpaper(
                 draw_pixel(buf, screen_w, screen_h, sx + 1, sy, glow);
                 draw_pixel(buf, screen_w, screen_h, sx, sy - 1, glow);
                 draw_pixel(buf, screen_w, screen_h, sx, sy + 1, glow);
+            }
+        }
+    }
+}
+
+/// Renderiza o wallpaper oficial "Jinn Sunset Cathedral"
+/// Réplica 1:1 da estética do portal web oficial: crepúsculo dourado sobre Ouro Preto,
+/// com silhueta solene de igreja barroca brasileira, montanhas e torre de transmissão.
+pub fn render_jinn_sunset_wallpaper(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    tick: u64,
+) {
+    if screen_w == 0 || screen_h == 0 { return; }
+
+    let horizon_y = (screen_h * 64) / 100;
+
+    // 1. Céu crepuscular: degradê contínuo de cinza-ardósia profundo no topo até âmbar solar radiante
+    for y in 0..horizon_y {
+        let factor = (y * 256) / horizon_y;
+        let r = 11 + ((220 * factor) / 256);
+        let g = 15 + ((120 * factor) / 256);
+        let b = 25usize.saturating_sub((10 * factor) / 256);
+        let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+        let row_start = y * screen_w;
+        for x in 0..screen_w {
+            buf[row_start + x] = row_color;
+        }
+    }
+
+    // 2. Brilho do sol poente centrado atrás da catedral
+    let sun_cx = screen_w / 2;
+    let glow_span = (screen_w * 44) / 100;
+    let glow_h = (screen_h * 24) / 100;
+    for dy in 0..glow_h {
+        let sy = horizon_y.saturating_sub(dy);
+        let glow_alpha = (70usize.saturating_sub((dy * 70) / glow_h)) as u8;
+        if glow_alpha > 0 {
+            let row_start = sy * screen_w;
+            for dx in 0..glow_span {
+                let factor = 256 - ((dx * 256) / glow_span);
+                let alpha = ((glow_alpha as usize * factor) / 256) as u8;
+                if sun_cx + dx < screen_w {
+                    buf[row_start + sun_cx + dx] = alpha_blend(buf[row_start + sun_cx + dx], 0x00F5_9E0B, alpha);
+                }
+                if sun_cx >= dx {
+                    buf[row_start + sun_cx - dx] = alpha_blend(buf[row_start + sun_cx - dx], 0x00F5_9E0B, alpha);
+                }
+            }
+        }
+    }
+
+    // 3. Camada de névoa e nuvens baixas sobre as montanhas ao horizonte
+    for x in 0..screen_w {
+        let wave = ((isin((x as i32 * 3) / 2) * 5) / 256) + ((icos((x as i32 * 5) / 3) * 3) / 256);
+        let cy0 = (horizon_y as isize + wave as isize - 10).max(0) as usize;
+        for cy in cy0..=horizon_y {
+            let alpha = (((cy - cy0) * 150) / (horizon_y - cy0 + 1)) as u8;
+            buf[cy * screen_w + x] = alpha_blend(buf[cy * screen_w + x], 0x0092_400E, alpha);
+        }
+    }
+
+    // 4. Terreno e montanhas inferiores em silhueta escura
+    for y in horizon_y..screen_h {
+        let dist = y - horizon_y;
+        let factor = (dist * 256) / (screen_h - horizon_y);
+        let r = 16usize.saturating_sub((10 * factor) / 256);
+        let g = 12usize.saturating_sub((8 * factor) / 256);
+        let b = 14usize.saturating_sub((8 * factor) / 256);
+        let row_color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+        let row_start = y * screen_w;
+        for x in 0..screen_w {
+            buf[row_start + x] = row_color;
+        }
+    }
+
+    let church_color = 0x000A_0807; // Silhueta grafite/preto profundo
+
+    // 5. Torre de Comunicações em Treliça (Lado Esquerdo)
+    let tower_x = (screen_w * 9) / 100;
+    let tower_top_y = (screen_h * 29) / 100;
+    let tower_base_y = (horizon_y + 12).min(screen_h - 1);
+    let tower_h = tower_base_y.saturating_sub(tower_top_y).max(1);
+    let tower_color = 0x0011_0F0E;
+
+    for y in tower_top_y..=tower_base_y {
+        let dy = y - tower_top_y;
+        let half_w = 2 + (dy * 9) / tower_h;
+        let lx = tower_x.saturating_sub(half_w);
+        let rx = (tower_x + half_w).min(screen_w - 1);
+        draw_pixel(buf, screen_w, screen_h, lx, y, tower_color);
+        draw_pixel(buf, screen_w, screen_h, rx, y, tower_color);
+
+        if dy % 12 == 0 {
+            for px in lx..=rx {
+                draw_pixel(buf, screen_w, screen_h, px, y, tower_color);
+            }
+        }
+        let seg_dy = dy % 12;
+        if rx > lx {
+            let diag1 = lx + (seg_dy * (rx - lx)) / 12;
+            let diag2 = rx.saturating_sub((seg_dy * (rx - lx)) / 12);
+            draw_pixel(buf, screen_w, screen_h, diag1, y, tower_color);
+            draw_pixel(buf, screen_w, screen_h, diag2, y, tower_color);
+        }
+    }
+    // Mastro e beacon pulsante no topo da torre
+    for y in tower_top_y.saturating_sub(22)..tower_top_y {
+        draw_pixel(buf, screen_w, screen_h, tower_x, y, tower_color);
+    }
+    let beacon_y = tower_top_y.saturating_sub(22);
+    if (tick % 40) < 22 {
+        draw_pixel(buf, screen_w, screen_h, tower_x, beacon_y, 0x00EF_4444);
+        if tower_x > 0 { draw_pixel(buf, screen_w, screen_h, tower_x - 1, beacon_y, 0x00F8_7171); }
+        if tower_x + 1 < screen_w { draw_pixel(buf, screen_w, screen_h, tower_x + 1, beacon_y, 0x00F8_7171); }
+        if beacon_y > 0 { draw_pixel(buf, screen_w, screen_h, tower_x, beacon_y - 1, 0x00F8_7171); }
+        if beacon_y + 1 < screen_h { draw_pixel(buf, screen_w, screen_h, tower_x, beacon_y + 1, 0x00F8_7171); }
+    }
+
+    // 6. Silhueta Barroca da Catedral (Centro da Tela)
+    let cx = (screen_w * 49) / 100;
+    let body_half_w = (screen_w * 25) / 100;
+    let roof_apex_y = (screen_h * 54) / 100;
+    let eaves_y = (screen_h * 64) / 100;
+
+    // Telhado inclinado e corpo da nave
+    for y in roof_apex_y..=eaves_y {
+        let dy = y - roof_apex_y;
+        let h_span = eaves_y - roof_apex_y + 1;
+        let current_w = (dy * body_half_w) / h_span;
+        let x0 = cx.saturating_sub(current_w);
+        let x1 = (cx + current_w).min(screen_w);
+        for px in x0..x1 {
+            draw_pixel(buf, screen_w, screen_h, px, y, church_color);
+        }
+    }
+    // Parede inferior sólida
+    for y in eaves_y..=(horizon_y + 45).min(screen_h) {
+        let x0 = cx.saturating_sub(body_half_w);
+        let x1 = (cx + body_half_w).min(screen_w);
+        for px in x0..x1 {
+            draw_pixel(buf, screen_w, screen_h, px, y, church_color);
+        }
+    }
+
+    // Grande cruz latina sobre o frontão central
+    for cy in roof_apex_y.saturating_sub(20)..roof_apex_y {
+        draw_pixel(buf, screen_w, screen_h, cx, cy, church_color);
+        draw_pixel(buf, screen_w, screen_h, cx + 1, cy, church_color);
+    }
+    let cross_arm_y = roof_apex_y.saturating_sub(14);
+    for cx_arm in cx.saturating_sub(7)..=(cx + 8).min(screen_w - 1) {
+        draw_pixel(buf, screen_w, screen_h, cx_arm, cross_arm_y, church_color);
+    }
+
+    // Torres Sineiras Gêmeas (Torre Esquerda e Torre Direita)
+    let tower_offset = (screen_w * 90) / 1000;
+    let tower_hw = (screen_w * 36) / 1000;
+    let towers_x = [cx.saturating_sub(tower_offset), cx + tower_offset];
+
+    for &tx in &towers_x {
+        let spire_top_y = (screen_h * 32) / 100;
+        let belfry_top_y = (screen_h * 43) / 100;
+        let belfry_bot_y = (screen_h * 56) / 100;
+
+        // Cruz superior de cada torre
+        for cy in spire_top_y.saturating_sub(14)..spire_top_y {
+            draw_pixel(buf, screen_w, screen_h, tx, cy, church_color);
+        }
+        let tc_arm_y = spire_top_y.saturating_sub(10);
+        for cx_arm in tx.saturating_sub(4)..=(tx + 4).min(screen_w - 1) {
+            draw_pixel(buf, screen_w, screen_h, cx_arm, tc_arm_y, church_color);
+        }
+
+        // Cúpula em forma de sino / pináculo barroco curvo
+        for y in spire_top_y..belfry_top_y {
+            let dy = y - spire_top_y;
+            let total_spire_h = belfry_top_y - spire_top_y;
+            let curved_span = ((dy * dy) * (tower_hw + 3)) / (total_spire_h * total_spire_h + 1);
+            let x0 = tx.saturating_sub(curved_span);
+            let x1 = (tx + curved_span).min(screen_w);
+            for px in x0..x1 {
+                draw_pixel(buf, screen_w, screen_h, px, y, church_color);
+            }
+        }
+
+        // Cornija em beiral saliente
+        let cornice_y = belfry_top_y;
+        let c_x0 = tx.saturating_sub(tower_hw + 4);
+        let c_x1 = (tx + tower_hw + 4).min(screen_w);
+        for px in c_x0..c_x1 {
+            draw_pixel(buf, screen_w, screen_h, px, cornice_y, church_color);
+            draw_pixel(buf, screen_w, screen_h, px, cornice_y + 1, church_color);
+        }
+
+        // Corpo do campanário (Belfry)
+        for y in (belfry_top_y + 2)..=belfry_bot_y {
+            let x0 = tx.saturating_sub(tower_hw);
+            let x1 = (tx + tower_hw).min(screen_w);
+            for px in x0..x1 {
+                draw_pixel(buf, screen_w, screen_h, px, y, church_color);
+            }
+        }
+
+        // Abertura em arco sineiro (onde o céu âmbar brilha e o sino aparece em silhueta)
+        let win_hw = tower_hw.saturating_sub(9).max(5);
+        let win_y0 = (screen_h * 47) / 100;
+        let win_y1 = (screen_h * 54) / 100;
+        let win_h = win_y1 - win_y0;
+
+        for wy in win_y0..=win_y1 {
+            let dy = wy - win_y0;
+            // Arco redondo no topo da janela
+            let cur_win_hw = if dy < (win_h / 3) {
+                let r_prog = (dy * 256) / (win_h / 3 + 1);
+                (win_hw * (r_prog + 64)) / 320
+            } else {
+                win_hw
+            };
+
+            let wx0 = tx.saturating_sub(cur_win_hw);
+            let wx1 = (tx + cur_win_hw).min(screen_w);
+
+            for px in wx0..wx1 {
+                // Fundo do céu brilhante através do arco
+                let sky_r = 224;
+                let sky_g = 138;
+                let sky_b = 20;
+                let sky_col = ((sky_r as u32) << 16) | ((sky_g as u32) << 8) | (sky_b as u32);
+                buf[wy * screen_w + px] = sky_col;
+            }
+        }
+
+        // Silhueta do sino suspenso no centro da abertura
+        let bell_y0 = win_y0 + 4;
+        let bell_y1 = win_y1.saturating_sub(3);
+        let bell_h = bell_y1 - bell_y0;
+        for by in bell_y0..=bell_y1 {
+            let b_dy = by - bell_y0;
+            let b_span = 1 + (b_dy * 4) / (bell_h + 1);
+            let bx0 = tx.saturating_sub(b_span);
+            let bx1 = (tx + b_span).min(screen_w);
+            for bpx in bx0..=bx1 {
+                draw_pixel(buf, screen_w, screen_h, bpx, by, church_color);
             }
         }
     }

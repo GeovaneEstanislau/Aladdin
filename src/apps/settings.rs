@@ -156,7 +156,7 @@ impl SettingsApp {
                 }
             } else if let Some(val) = line.strip_prefix("WALLPAPER=") {
                 if let Ok(w) = val.parse::<u8>() {
-                    if w <= 11 {
+                    if w <= 12 {
                         self.wallpaper_id = w;
                         recognized_valid = true;
                     }
@@ -287,7 +287,7 @@ impl SettingsApp {
         let is_w0 = self.wallpaper_id == 0;
         fill_rect(buf, screen_w, screen_h, p0_x, row1_y, w_s5, 18, if is_w0 { COLOR_CARD_ALT } else { 0x0011_1827 });
         draw_rect_outline(buf, screen_w, screen_h, p0_x, row1_y, w_s5, 18, if is_w0 { COLOR_CYAN } else { COLOR_BORDER });
-        draw_string(buf, screen_w, screen_h, "1. Aurora", p0_x + 6, row1_y + 4, if is_w0 { COLOR_CYAN } else { COLOR_TEXT_MUTED }, None);
+        draw_string(buf, screen_w, screen_h, "1. Sunset*", p0_x + 6, row1_y + 4, if is_w0 { COLOR_CYAN } else { COLOR_TEXT_MUTED }, None);
 
         let is_w1 = self.wallpaper_id == 1;
         fill_rect(buf, screen_w, screen_h, p1_x, row1_y, w_s5, 18, if is_w1 { COLOR_CARD_ALT } else { 0x0011_1827 });

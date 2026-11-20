@@ -10,6 +10,8 @@ use crate::wm::{WindowManager, Window};
 use crate::apps::*;
 use super::wingpanel::render_wingpanel;
 use super::dock::render_dock;
+use super::conky::render_conky_hud;
+use super::shortcuts::{render_desktop_shortcuts, handle_shortcuts_click};
 use super::start_menu::*;
 use super::notifications::*;
 use super::quick_settings::*;
@@ -366,10 +368,16 @@ impl AladdinSession {
             self.wm.render_snap_preview(buf, screen_w, screen_h, snap.x, snap.y, snap.width, snap.height);
         }
 
-        // 3. Wingpanel superior
+        // 3. Conky Telemetry HUD Card no canto superior esquerdo
+        render_conky_hud(buf, screen_w, screen_h, &stats, sys.storage_profile_name());
+
+        // 4. Atalhos na Área de Trabalho (Desktop Shortcuts) na coluna direita
+        render_desktop_shortcuts(buf, screen_w, screen_h, mouse_x, mouse_y);
+
+        // 5. Wingpanel superior
         render_wingpanel(buf, screen_w, screen_h, &stats, sys.storage_profile_name(), self.mode, self.start_menu_open);
 
-        // 4. Marca d'água elegante
+        // 6. Marca d'água elegante
         draw_string(buf, screen_w, screen_h, "Aladdin Desktop 7.0 | Jinn Microkernel x86_64", screen_w.saturating_sub(370), screen_h.saturating_sub(16), COLOR_BORDER, None);
 
         // 5. Renderiza janelas em Z-order (do fundo para o topo)
@@ -632,50 +640,29 @@ impl AladdinSession {
                 }
             }
 
-            // 2. Wingpanel superior (y: 0..26)
-            if my < 26 {
-                // Launcher [# Aladdin]
-                if mx >= 8 && mx <= 122 {
+            // 2. Wingpanel superior (y: 0..28)
+            if my < 28 {
+                // Sair Button no extremo direito
+                let exit_x = screen_w.saturating_sub(68);
+                if mx >= exit_x {
+                    self.should_exit = true;
+                    return (false, None);
+                }
+                // Marca e Launcher esquerdo abre Menu Iniciar
+                if mx <= 160 {
                     self.start_menu_open = !self.start_menu_open;
                     self.quick_settings_open = false;
                     return (false, None);
                 }
-                // Center Pill (Uptime) / RAM Pill abre Centro de Controle Rápido
-                let center_x = (screen_w / 2).saturating_sub(76);
-                let ram_x = screen_w.saturating_sub(424);
-                if (mx >= center_x && mx <= center_x + 152) || (mx >= ram_x && mx <= ram_x + 120) {
-                    self.quick_settings_open = !self.quick_settings_open;
-                    self.start_menu_open = false;
-                    return (false, None);
-                }
-                // JSA Storage Profile
-                let jsa_x = screen_w.saturating_sub(298);
-                if mx >= jsa_x && mx <= jsa_x + 124 {
-                    sys.cycle_storage_profile();
-                    self.notifications.post(b'D', "Perfil Storage", sys.storage_profile_name(), COLOR_AMBER, 250, sys.stats().current_tick);
-                    return (false, None);
-                }
-                // FX Capability Mode
-                let fx_x = screen_w.saturating_sub(168);
-                if mx >= fx_x && mx <= fx_x + 84 {
-                    self.mode = match self.mode {
-                        CapabilityMode::Basic => CapabilityMode::Balanced,
-                        CapabilityMode::Balanced => CapabilityMode::Advanced,
-                        CapabilityMode::Advanced => CapabilityMode::Basic,
-                    };
-                    let mode_desc = match self.mode {
-                        CapabilityMode::Basic => "Eco (0% FX)",
-                        CapabilityMode::Balanced => "Equilibrado (Sombras)",
-                        CapabilityMode::Advanced => "Glow Neon (Dr460nized)",
-                    };
-                    self.notifications.post(b'#', "Modo Visual", mode_desc, COLOR_PURPLE, 250, sys.stats().current_tick);
-                    return (false, None);
-                }
-                // Sair Button
-                let exit_x = screen_w.saturating_sub(78);
-                if mx >= exit_x && mx <= exit_x + 70 {
-                    self.should_exit = true;
-                    return (false, None);
+                // Cápsula de telemetria à direita abre Centro de Controle Rápido
+                let right_capsule_w = 460;
+                if screen_w > right_capsule_w + 440 {
+                    let cap_x = screen_w.saturating_sub(right_capsule_w + 12);
+                    if mx >= cap_x && mx <= cap_x + right_capsule_w {
+                        self.quick_settings_open = !self.quick_settings_open;
+                        self.start_menu_open = false;
+                        return (false, None);
+                    }
                 }
             }
 
@@ -725,25 +712,44 @@ impl AladdinSession {
                 }
             }
 
-            // 4. Plank Dock inferior (y >= screen_h - 54)
+            // 4. Cairo-Dock flutuante inferior
             let dock_x = (screen_w / 2).saturating_sub(crate::desktop::dock::DOCK_WIDTH / 2);
             let dock_y = screen_h.saturating_sub(crate::desktop::dock::DOCK_HEIGHT + 10);
             if my >= dock_y && my <= dock_y + crate::desktop::dock::DOCK_HEIGHT && mx >= dock_x && mx <= dock_x + crate::desktop::dock::DOCK_WIDTH {
-                let slot_idx = (mx.saturating_sub(dock_x)) / 94;
+                let rel_x = mx.saturating_sub(dock_x + 20);
+                let slot_idx = rel_x / 53;
                 let top_id = self.wm.top_window_id();
                 match slot_idx {
                     0 => {
-                        if let Some(w) = self.wm.windows[0].as_mut() {
-                            if w.is_open && !w.is_minimized && top_id == 0 {
+                        // Slot 0: Menu Iniciar Whisker
+                        self.start_menu_open = !self.start_menu_open;
+                    }
+                    1 => {
+                        // Slot 1: História do Jinn (Win 2)
+                        if let Some(w) = self.wm.windows[2].as_mut() {
+                            if w.is_open && !w.is_minimized && top_id == 2 {
                                 w.is_minimized = true;
                             } else {
                                 w.is_open = true;
                                 w.is_minimized = false;
-                                self.wm.bring_to_front(0);
+                                self.wm.bring_to_front(2);
                             }
                         }
                     }
-                    1 => {
+                    2 => {
+                        // Slot 2: O Criador (Win 2)
+                        if let Some(w) = self.wm.windows[2].as_mut() {
+                            if w.is_open && !w.is_minimized && top_id == 2 {
+                                w.is_minimized = true;
+                            } else {
+                                w.is_open = true;
+                                w.is_minimized = false;
+                                self.wm.bring_to_front(2);
+                            }
+                        }
+                    }
+                    3 => {
+                        // Slot 3: Terminal Shell (Win 1)
                         if let Some(w) = self.wm.windows[1].as_mut() {
                             if w.is_open && !w.is_minimized && top_id == 1 {
                                 w.is_minimized = true;
@@ -754,7 +760,8 @@ impl AladdinSession {
                             }
                         }
                     }
-                    2 => {
+                    4 => {
+                        // Slot 4: Arquivos VFS (Win 3)
                         if let Some(w) = self.wm.windows[3].as_mut() {
                             if w.is_open && !w.is_minimized && top_id == 3 {
                                 w.is_minimized = true;
@@ -766,20 +773,8 @@ impl AladdinSession {
                             }
                         }
                     }
-                    3 => {
-                        // Slot 3: Discos (Win 5)
-                        if let Some(w) = self.wm.windows[5].as_mut() {
-                            if w.is_open && !w.is_minimized && top_id == 5 {
-                                w.is_minimized = true;
-                            } else {
-                                w.is_open = true;
-                                w.is_minimized = false;
-                                self.wm.bring_to_front(5);
-                            }
-                        }
-                    }
-                    4 => {
-                        // Slot 4: Browser
+                    5 => {
+                        // Slot 5: Browser
                         if let Some(c_id) = self.find_browser_window_id() {
                             if let Some(w) = self.wm.windows[c_id].as_mut() {
                                 if !w.is_minimized && top_id == c_id {
@@ -793,8 +788,20 @@ impl AladdinSession {
                             self.launch_or_focus_browser(proc_host);
                         }
                     }
-                    5 => {
-                        // Slot 5: Ajustes (Win 4)
+                    6 => {
+                        // Slot 6: Monitor JAHA (Win 0)
+                        if let Some(w) = self.wm.windows[0].as_mut() {
+                            if w.is_open && !w.is_minimized && top_id == 0 {
+                                w.is_minimized = true;
+                            } else {
+                                w.is_open = true;
+                                w.is_minimized = false;
+                                self.wm.bring_to_front(0);
+                            }
+                        }
+                    }
+                    7 => {
+                        // Slot 7: Ajustes (Win 4)
                         if let Some(w) = self.wm.windows[4].as_mut() {
                             if w.is_open && !w.is_minimized && top_id == 4 {
                                 w.is_minimized = true;
@@ -805,8 +812,20 @@ impl AladdinSession {
                             }
                         }
                     }
-                    6 => {
-                        // Slot 6: Sobre (Win 2)
+                    8 => {
+                        // Slot 8: Discos / Baixar ISO (Win 5)
+                        if let Some(w) = self.wm.windows[5].as_mut() {
+                            if w.is_open && !w.is_minimized && top_id == 5 {
+                                w.is_minimized = true;
+                            } else {
+                                w.is_open = true;
+                                w.is_minimized = false;
+                                self.wm.bring_to_front(5);
+                            }
+                        }
+                    }
+                    9 => {
+                        // Slot 9: Sobre / GitHub (Win 2)
                         if let Some(w) = self.wm.windows[2].as_mut() {
                             if w.is_open && !w.is_minimized && top_id == 2 {
                                 w.is_minimized = true;
@@ -971,7 +990,7 @@ impl AladdinSession {
                             if mx >= p0_x && mx <= p0_x + w_s5 {
                                 self.settings.wallpaper_id = 0;
                                 let _ = self.settings.save_to_vfs(vfs, self.mode);
-                                self.notifications.post(b'*', "Papel de Parede", "Cyber-Aurora Ativo", COLOR_CYAN_NEON, 200, sys.stats().current_tick);
+                                self.notifications.post(b'*', "Papel de Parede", "Sunset Cathedral Ativo", COLOR_CYAN_NEON, 200, sys.stats().current_tick);
                             } else if mx >= p1_x && mx <= p1_x + w_s5 {
                                 self.settings.wallpaper_id = 1;
                                 let _ = self.settings.save_to_vfs(vfs, self.mode);
@@ -1115,6 +1134,51 @@ impl AladdinSession {
                     }
                     self.wm.close_window(clicked_idx);
                     self.client_damaged = true;
+                    return (false, None);
+                }
+            } else {
+                // 6. Atalhos na Área de Trabalho (Desktop Shortcuts - Coluna Direita)
+                if let Some(shortcut_idx) = handle_shortcuts_click(screen_w, screen_h, mx, my) {
+                    match shortcut_idx {
+                        0 | 1 => {
+                            // 0: História, 1: O Criador (Sobre)
+                            if let Some(w) = self.wm.windows[2].as_mut() {
+                                w.is_open = true;
+                                w.is_minimized = false;
+                            }
+                            self.wm.bring_to_front(2);
+                        }
+                        2 => {
+                            // 2: Terminal Shell
+                            if let Some(w) = self.wm.windows[1].as_mut() {
+                                w.is_open = true;
+                                w.is_minimized = false;
+                            }
+                            self.wm.bring_to_front(1);
+                        }
+                        3 => {
+                            // 3: Código (VFS)
+                            if let Some(w) = self.wm.windows[3].as_mut() {
+                                w.is_open = true;
+                                w.is_minimized = false;
+                            }
+                            self.files.refresh_cache(vfs);
+                            self.wm.bring_to_front(3);
+                        }
+                        4 => {
+                            // 4: Jinn Browser
+                            self.launch_or_focus_browser(proc_host);
+                        }
+                        5 => {
+                            // 5: Baixar ISO / Discos
+                            if let Some(w) = self.wm.windows[5].as_mut() {
+                                w.is_open = true;
+                                w.is_minimized = false;
+                            }
+                            self.wm.bring_to_front(5);
+                        }
+                        _ => {}
+                    }
                     return (false, None);
                 }
             }
