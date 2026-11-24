@@ -30,6 +30,7 @@ pub enum FileDialogKind {
     Rename,
     Preview,
     Properties,
+    EditFile,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -88,10 +89,10 @@ pub struct FileManagerApp {
     pub status_len: usize,
     pub status_is_error: bool,
 
-    // Quick Look Preview
+    // Quick Look Preview / Editor de Notas
     pub preview_filename: [u8; 32],
     pub preview_filename_len: usize,
-    pub preview_content: [u8; 256],
+    pub preview_content: [u8; 512],
     pub preview_content_len: usize,
 
     // IMP-01: Cache assíncrono de capacidade para desacoplar statvfs do render loop
@@ -119,7 +120,7 @@ impl FileManagerApp {
             status_is_error: false,
             preview_filename: [0; 32],
             preview_filename_len: 0,
-            preview_content: [0; 256],
+            preview_content: [0; 512],
             preview_content_len: 0,
             cached_vol_info: core::cell::Cell::new(None),
             cached_vol_valid: core::cell::Cell::new(false),
@@ -314,8 +315,8 @@ impl FileManagerApp {
         }
 
         let clean = name.trim();
-        if clean.is_empty() || clean.len() > 11 {
-            self.set_status("[X] Nome de pasta invalido (maximo 11 caracteres 8.3)", true);
+        if clean.is_empty() || clean.len() > 31 {
+            self.set_status("[X] Nome de pasta invalido (maximo 31 caracteres)", true);
             return Err("Nome invalido");
         }
 
@@ -349,8 +350,8 @@ impl FileManagerApp {
         }
 
         let clean = name.trim();
-        if clean.is_empty() || clean.len() > 12 {
-            self.set_status("[X] Nome de arquivo invalido (maximo 12 caracteres 8.3)", true);
+        if clean.is_empty() || clean.len() > 31 {
+            self.set_status("[X] Nome de arquivo invalido (maximo 31 caracteres)", true);
             return Err("Nome invalido");
         }
 
@@ -503,6 +504,10 @@ impl FileManagerApp {
     }
 
     pub fn open_preview(&mut self, name: &str, vfs: &dyn VfsHost) {
+        self.open_editor(name, vfs);
+    }
+
+    pub fn open_editor(&mut self, name: &str, vfs: &dyn VfsHost) {
         let n_len = name.len().min(31);
         self.preview_filename = [0; 32];
         self.preview_filename[..n_len].copy_from_slice(&name.as_bytes()[..n_len]);
@@ -518,13 +523,39 @@ impl FileManagerApp {
 
         if let Ok(path_str) = core::str::from_utf8(&path_buf[..plen]) {
             if let Ok(read_bytes) = vfs.read_file(path_str, &mut self.preview_content) {
-                self.preview_content_len = read_bytes.min(256);
-                self.dialog_kind = FileDialogKind::Preview;
+                self.preview_content_len = read_bytes.min(512);
+                self.dialog_kind = FileDialogKind::EditFile;
+                self.set_status("Editor de Notas ativo (Ctrl+S para salvar)", false);
                 return;
             }
         }
         self.preview_content_len = 0;
-        self.dialog_kind = FileDialogKind::Preview;
+        self.dialog_kind = FileDialogKind::EditFile;
+        self.set_status("Editor de Notas ativo (Ctrl+S para salvar)", false);
+    }
+
+    pub fn save_editor(&mut self, vfs: &dyn VfsHost) -> Result<(), &'static str> {
+        if self.is_read_only() {
+            self.set_status("[X] Volume somente-leitura. Salvamento negado.", true);
+            return Err("Volume somente-leitura");
+        }
+        let name = core::str::from_utf8(&self.preview_filename[..self.preview_filename_len]).map_err(|_| "Nome invalido")?;
+        let cur = self.current_path_str();
+        let mut path_buf = [0u8; MAX_PATH_BUF];
+        let mut plen = cur.len();
+        path_buf[..plen].copy_from_slice(cur.as_bytes());
+        if path_buf[plen - 1] != b'/' { path_buf[plen] = b'/'; plen += 1; }
+        path_buf[plen..plen + name.len()].copy_from_slice(name.as_bytes());
+        plen += name.len();
+
+        let path_str = core::str::from_utf8(&path_buf[..plen]).map_err(|_| "Erro UTF-8")?;
+        let content_len = self.preview_content_len.min(512);
+        if let Err(_) = vfs.write_file(path_str, &self.preview_content[..content_len]) {
+            self.set_status("[X] Falha ao salvar arquivo no VFS", true);
+            return Err("Falha ao salvar");
+        }
+        self.set_status("[V] Arquivo salvo com sucesso no VFS", false);
+        Ok(())
     }
 
     pub fn open_dialog(&mut self, kind: FileDialogKind) {
@@ -541,6 +572,39 @@ impl FileManagerApp {
 
     pub fn handle_key(&mut self, key: u8, vfs: &dyn VfsHost) {
         if self.dialog_kind == FileDialogKind::None {
+            return;
+        }
+
+        if self.dialog_kind == FileDialogKind::EditFile {
+            match key {
+                27 => {
+                    // ESC
+                    self.close_dialog();
+                }
+                19 => {
+                    // Ctrl+S
+                    let _ = self.save_editor(vfs);
+                }
+                8 => {
+                    // Backspace
+                    if self.preview_content_len > 0 {
+                        self.preview_content_len -= 1;
+                        self.preview_content[self.preview_content_len] = 0;
+                    }
+                }
+                10 | 13 => {
+                    // Enter
+                    if self.preview_content_len < 511 {
+                        self.preview_content[self.preview_content_len] = b'\n';
+                        self.preview_content_len += 1;
+                    }
+                }
+                b if (b >= 32 && b <= 126) && self.preview_content_len < 511 => {
+                    self.preview_content[self.preview_content_len] = b;
+                    self.preview_content_len += 1;
+                }
+                _ => {}
+            }
             return;
         }
 
@@ -575,7 +639,7 @@ impl FileManagerApp {
                         let _ = self.rename_selected(name, vfs);
                         self.close_dialog();
                     }
-                    FileDialogKind::Preview | FileDialogKind::Properties => {
+                    FileDialogKind::Preview | FileDialogKind::Properties | FileDialogKind::EditFile => {
                         self.close_dialog();
                     }
                     FileDialogKind::None => {}
@@ -596,8 +660,8 @@ impl FileManagerApp {
                     self.input_buffer[self.input_len] = 0;
                 }
             }
-            b if (b.is_ascii_alphanumeric() || b == b'.' || b == b'_' || b == b'-') && self.input_len < 16 => {
-                self.input_buffer[self.input_len] = b.to_ascii_uppercase();
+            b if (b.is_ascii_alphanumeric() || b == b'.' || b == b'_' || b == b'-') && self.input_len < 31 => {
+                self.input_buffer[self.input_len] = b;
                 self.input_len += 1;
             }
             _ => {}
@@ -618,7 +682,11 @@ impl FileManagerApp {
         // Se houver diálogo modal aberto, processa cliques nos botões do diálogo
         if self.dialog_kind != FileDialogKind::None {
             let dw = DIALOG_W;
-            let dh = if self.dialog_kind == FileDialogKind::Preview { DIALOG_H_PREVIEW } else { DIALOG_H_NORMAL };
+            let dh = match self.dialog_kind {
+                FileDialogKind::Preview => DIALOG_H_PREVIEW,
+                FileDialogKind::EditFile => 210,
+                _ => DIALOG_H_NORMAL,
+            };
             let dx = wx + (ww.saturating_sub(dw)) / 2;
             let dy = wy + (wh.saturating_sub(dh)) / 2;
 
@@ -650,6 +718,10 @@ impl FileManagerApp {
                         FileDialogKind::Rename => {
                             let name = if in_len > 0 { core::str::from_utf8(&in_buf[..in_len]).unwrap_or("NOVO") } else { "NOVO" };
                             let _ = self.rename_selected(name, vfs);
+                        }
+                        FileDialogKind::EditFile => {
+                            let _ = self.save_editor(vfs);
+                            return true;
                         }
                         FileDialogKind::Preview | FileDialogKind::Properties => {}
                         FileDialogKind::None => {}
@@ -834,8 +906,8 @@ impl FileManagerApp {
                                 let _ = proc_host.spawn_app(p_str);
                                 self.set_status("Aplicativo iniciado", false);
                             }
-                        } else if entry.is_txt {
-                            self.open_preview(name_str, vfs);
+                        } else if entry.is_txt || name_str.ends_with(".txt") || name_str.ends_with(".TXT") || name_str.ends_with(".cfg") || name_str.ends_with(".htm") || name_str.ends_with(".log") {
+                            self.open_editor(name_str, vfs);
                         }
                     } else {
                         let is_dir = self.file_cache[i].is_dir;
@@ -1144,7 +1216,11 @@ impl FileManagerApp {
         wh: usize,
     ) {
         let dw = DIALOG_W;
-        let dh = if self.dialog_kind == FileDialogKind::Preview { DIALOG_H_PREVIEW } else { DIALOG_H_NORMAL };
+        let dh = match self.dialog_kind {
+            FileDialogKind::Preview => DIALOG_H_PREVIEW,
+            FileDialogKind::EditFile => 210,
+            _ => DIALOG_H_NORMAL,
+        };
         let dx = wx + (ww.saturating_sub(dw)) / 2;
         let dy = wy + (wh.saturating_sub(dh)) / 2;
 
@@ -1161,6 +1237,7 @@ impl FileManagerApp {
             FileDialogKind::NewFile => "Criar Novo Arquivo",
             FileDialogKind::Rename => "Renomear Item",
             FileDialogKind::Preview => "Quick Look — Visualizador VFS",
+            FileDialogKind::EditFile => "Editor de Notas — Aladdin",
             FileDialogKind::Properties => "Propriedades do Item",
             FileDialogKind::None => "",
         };
@@ -1262,6 +1339,54 @@ impl FileManagerApp {
                 fill_rounded_rect(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, 4, 0x001E_293B);
                 draw_rounded_outline(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, 4, COLOR_BORDER);
                 draw_string(buf, screen_w, screen_h, "Fechar", fc_x + 28, btn_y + 3, COLOR_WHITE, Some(0x001E_293B));
+            }
+            FileDialogKind::EditFile => {
+                let name = core::str::from_utf8(&self.preview_filename[..self.preview_filename_len]).unwrap_or("arquivo");
+                draw_string(buf, screen_w, screen_h, name, dx + 16, dy + 28, COLOR_CYAN, Some(0x000F_172A));
+                draw_string(buf, screen_w, screen_h, "(Ctrl+S p/ salvar)", dx + 16 + (name.len() * 8) + 8, dy + 28, COLOR_TEXT_MUTED, Some(0x000F_172A));
+
+                // Caixa de texto editável com cantos arredondados
+                let tb_w = dw - 32;
+                let tb_h = 110;
+                fill_rounded_rect(buf, screen_w, screen_h, dx + 16, dy + 46, tb_w, tb_h, 4, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, dx + 16, dy + 46, tb_w, tb_h, 4, COLOR_BORDER_ACT);
+
+                let c_len = self.preview_content_len.min(512);
+                let mut line_y = dy + 50;
+                let mut line_start = 0;
+                let mut rendered = 0;
+                let mut last_x = dx + 22;
+                for i in 0..c_len {
+                    let b = self.preview_content[i];
+                    let is_break = b == b'\n' || (i - line_start) >= 36 || i == c_len - 1;
+                    if is_break {
+                        let end_i = if b == b'\n' { i } else { i + 1 };
+                        if end_i > line_start && rendered < 5 {
+                            if let Ok(lstr) = core::str::from_utf8(&self.preview_content[line_start..end_i]) {
+                                draw_string(buf, screen_w, screen_h, lstr, dx + 22, line_y, COLOR_TEXT_PRI, Some(0x001E_293B));
+                                last_x = dx + 22 + (lstr.len() * 8);
+                                line_y += 18;
+                                rendered += 1;
+                            }
+                        }
+                        line_start = i + 1;
+                    }
+                }
+                if rendered > 0 {
+                    draw_string(buf, screen_w, screen_h, "_", last_x, line_y - 18, COLOR_CYAN_NEON, Some(0x001E_293B));
+                } else {
+                    draw_string(buf, screen_w, screen_h, "_", dx + 22, dy + 50, COLOR_CYAN_NEON, Some(0x001E_293B));
+                }
+
+                // [ Salvar (Ctrl+S) ]
+                fill_rounded_rect(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, 4, 0x0006_4E3B);
+                draw_rounded_outline(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, 4, COLOR_EMERALD);
+                draw_string(buf, screen_w, screen_h, "Salvar (Ctrl+S)", b0_x + 18, btn_y + 3, COLOR_EMERALD, Some(0x0006_4E3B));
+
+                // [ Fechar ]
+                fill_rounded_rect(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, 4, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, 4, COLOR_BORDER);
+                draw_string(buf, screen_w, screen_h, "Fechar (Esc)", b1_x + 28, btn_y + 3, COLOR_TEXT_PRI, Some(0x001E_293B));
             }
             FileDialogKind::Properties => {
                 let (name, is_dir, is_elf, is_txt) = if let Some(i) = self.selected_index {
