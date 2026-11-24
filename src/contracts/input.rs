@@ -42,6 +42,7 @@ pub const EVENT_KEY_UP: u32 = 5;
 pub const EVENT_SCROLL: u32 = 6;
 pub const EVENT_WINDOW_CLOSE: u32 = 7;
 pub const EVENT_WINDOW_RESIZE: u32 = 8;
+pub const EVENT_WINDOW_EXPOSE: u32 = 9;
 
 /// Estrutura de evento transmitida entre o compositor e processos de usuário (32 bytes).
 #[repr(C)]

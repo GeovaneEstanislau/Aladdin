@@ -551,6 +551,9 @@ impl AladdinSession {
         // Se soltou o botão esquerdo, encerra arrasto e avalia encaixe (Window Snapping)
         if !left_clicked {
             let mut pending_resizes: [Option<crate::contracts::input::ClientWindowEvent>; 16] = [None; 16];
+            let mut pending_exposes: [Option<crate::contracts::input::ClientWindowEvent>; 16] = [None; 16];
+            let mut any_drag_ended = false;
+
             for (win_idx, win_opt) in self.wm.windows.iter_mut().enumerate() {
                 if let Some(win) = win_opt {
                     if win.is_resizing {
@@ -573,6 +576,7 @@ impl AladdinSession {
 
                     if win.is_dragging {
                         win.is_dragging = false;
+                        any_drag_ended = true;
 
                         // Aplica o encaixe (Snap) se foi solto próximo aos limites da tela
                         let mut snapped = false;
@@ -602,17 +606,45 @@ impl AladdinSession {
                                 modifiers: 0,
                                 timestamp: sys.stats().current_tick,
                             });
+                        } else if !snapped && win.owner_pid.is_some() {
+                            let client_w = win.client_width();
+                            let client_h = win.client_height();
+                            pending_exposes[win_idx] = Some(crate::contracts::input::ClientWindowEvent {
+                                event_type: crate::contracts::input::EVENT_WINDOW_EXPOSE,
+                                win_id: win_idx as u32,
+                                x: client_w as i32,
+                                y: client_h as i32,
+                                button_or_key: 0,
+                                modifiers: 0,
+                                timestamp: sys.stats().current_tick,
+                            });
                         }
                     }
                 }
+            }
+
+            if any_drag_ended {
+                self.client_damaged = true;
             }
 
             for (idx, ev_opt) in pending_resizes.iter().enumerate() {
                 if let Some(ev) = ev_opt {
                     let pixels = (ev.x as usize) * (ev.y as usize);
                     if pixels > 0 && pixels <= crate::wm::manager::WindowManager::MAX_CLIENT_BUFFER_PIXELS {
-                        self.wm.client_buffers[idx] = Some(alloc::vec![0x0018_1825; pixels]);
+                        let need_realloc = match self.wm.client_buffers[idx].as_ref() {
+                            Some(b) => b.len() != pixels,
+                            None => true,
+                        };
+                        if need_realloc {
+                            self.wm.client_buffers[idx] = Some(alloc::vec![0x0018_1825; pixels]);
+                        }
                     }
+                    self.wm.push_client_event(idx, *ev);
+                }
+            }
+
+            for (idx, ev_opt) in pending_exposes.iter().enumerate() {
+                if let Some(ev) = ev_opt {
                     self.wm.push_client_event(idx, *ev);
                 }
             }
@@ -676,6 +708,7 @@ impl AladdinSession {
                     let old_box = DirtyRect::new(old_x.saturating_sub(2), old_y.saturating_sub(2), win.width + 4, win.height + 4);
                     let new_box = DirtyRect::new(win.x.saturating_sub(2), win.y.saturating_sub(2), win.width + 4, win.height + 4);
                     drag_damage = Some(old_box.union(&new_box));
+                    self.client_damaged = true;
                 }
             }
         }
@@ -1151,7 +1184,13 @@ impl AladdinSession {
                             let client_h = win.client_height();
                             let pixels = client_w * client_h;
                             if pixels > 0 && pixels <= crate::wm::manager::WindowManager::MAX_CLIENT_BUFFER_PIXELS {
-                                self.wm.client_buffers[clicked_idx] = Some(alloc::vec![0x0018_1825; pixels]);
+                                let need_realloc = match self.wm.client_buffers[clicked_idx].as_ref() {
+                                    Some(b) => b.len() != pixels,
+                                    None => true,
+                                };
+                                if need_realloc {
+                                    self.wm.client_buffers[clicked_idx] = Some(alloc::vec![0x0018_1825; pixels]);
+                                }
                                 let resize_ev = crate::contracts::input::ClientWindowEvent {
                                     event_type: crate::contracts::input::EVENT_WINDOW_RESIZE,
                                     win_id: clicked_idx as u32,
