@@ -7,7 +7,7 @@ use crate::font::*;
 use crate::contracts::system::SystemStats;
 
 pub const CONKY_WIDTH: usize = 256;
-pub const CONKY_HEIGHT: usize = 234;
+pub const CONKY_HEIGHT: usize = 248;
 
 pub fn render_conky_hud(
     buf: &mut [u32],
@@ -63,6 +63,12 @@ pub fn render_conky_hud(
     // Syscalls Total
     draw_string_telemetry(buf, screen_w, screen_h, "Syscalls    :", x + 12, row_y, COLOR_TEXT_MUTED, Some(header_bg));
     draw_label_and_num(buf, screen_w, screen_h, "", stats.syscalls_total as usize, " ops", x + 122, row_y, COLOR_CYAN_NEON, Some(header_bg));
+    row_y += line_step;
+
+    // SPSC Shared Rings
+    draw_string_telemetry(buf, screen_w, screen_h, "Shared Rings:", x + 12, row_y, COLOR_TEXT_MUTED, Some(header_bg));
+    draw_label_and_num(buf, screen_w, screen_h, "", stats.ring_events_processed as usize, " in/", x + 122, row_y, COLOR_CYAN_NEON, Some(header_bg));
+    draw_label_and_num(buf, screen_w, screen_h, "", stats.ring_cmds_flushed as usize, " gfx", x + 180, row_y, COLOR_EMERALD, Some(header_bg));
     row_y += line_step;
 
     // Ticks APIC

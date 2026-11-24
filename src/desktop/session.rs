@@ -263,7 +263,7 @@ impl AladdinSession {
 
     fn init_default_windows(&mut self) {
         // Janela 0: Monitor de Sistema (aberta)
-        self.wm.windows[0] = Some(Window::new(0, "Jinn OS - Monitor de Sistema", 60, 60, 390, 340));
+        self.wm.windows[0] = Some(Window::new(0, "Jinn OS - Monitor de Sistema", 50, 60, 410, 340));
 
         // Janela 1: Terminal Interativo (aberta e com foco)
         self.wm.windows[1] = Some(Window::new(1, "Terminal Interativo (Ring 3 Ready)", 470, 80, 460, 240));

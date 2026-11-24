@@ -29,7 +29,8 @@ impl SystemMonitorApp {
         let total_c = stats.cpu_active_cycles + stats.cpu_idle_cycles;
         let cpu_pct = if total_c > 0 { ((stats.cpu_active_cycles * 100) / total_c) as usize } else { 0 };
         let x_cpu = draw_label_and_num(buf, screen_w, screen_h, "CPU Zero-Idle  : ", cpu_pct, " % (HLT) | ", win_x + 12, win_y + 86, COLOR_EMERALD, Some(COLOR_CARD));
-        draw_label_and_num(buf, screen_w, screen_h, "Syscalls: ", stats.syscalls_total as usize, " ops", x_cpu, win_y + 86, COLOR_CYAN_NEON, Some(COLOR_CARD));
+        let x_sys = draw_label_and_num(buf, screen_w, screen_h, "Syscalls: ", stats.syscalls_total as usize, " | ", x_cpu, win_y + 86, COLOR_CYAN_NEON, Some(COLOR_CARD));
+        draw_label_and_num(buf, screen_w, screen_h, "Rings: ", stats.ring_events_processed as usize, " in", x_sys, win_y + 86, COLOR_AMBER, Some(COLOR_CARD));
 
         let x_ram = draw_label_and_num(buf, screen_w, screen_h, "Memória RAM    : ", stats.used_ram_mb, " MB / ", win_x + 12, win_y + 102, COLOR_TEXT_PRI, Some(COLOR_CARD));
         draw_label_and_num(buf, screen_w, screen_h, "", stats.total_ram_mb, " MB", x_ram, win_y + 102, COLOR_TEXT_PRI, Some(COLOR_CARD));

@@ -4,6 +4,7 @@ pub mod system;
 pub mod vfs;
 pub mod process;
 pub mod storage;
+pub mod shared_rings;
 
 pub use framebuffer::{DirtyRect, FramebufferDevice, FramebufferInfo, PixelFormat};
 pub use input::{
@@ -15,3 +16,4 @@ pub use system::{CapabilityMode, JinnWallProfile, SystemHost, SystemStats};
 pub use vfs::VfsHost;
 pub use process::ProcessHost;
 pub use storage::{DiskBus, DiskInfo, VolumeDisplayInfo, StorageHost};
+pub use shared_rings::*;

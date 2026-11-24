@@ -46,6 +46,8 @@ pub struct SystemStats {
     pub syscalls_total: u64,
     pub memory_active_bytes: u64,
     pub memory_idle_bytes: u64,
+    pub ring_events_processed: u64,
+    pub ring_cmds_flushed: u64,
 }
 
 impl Default for SystemStats {
@@ -78,6 +80,8 @@ impl Default for SystemStats {
             syscalls_total: 0,
             memory_active_bytes: 0,
             memory_idle_bytes: 0,
+            ring_events_processed: 0,
+            ring_cmds_flushed: 0,
         }
     }
 }
