@@ -268,34 +268,34 @@ impl WindowManager {
         let rw = win.render_width();
         let rh = win.render_height();
 
-        let title_color = if is_active { COLOR_TOPPANEL } else { 0x0011_1827 };
+        let title_color = if is_active { 0x0016_2032 } else { 0x000F_172A };
         let border_color = if is_active { COLOR_BORDER_ACT } else { COLOR_BORDER };
 
-        // Sombras projetadas curvas conforme CapabilityMode
-        if mode == CapabilityMode::Advanced {
-            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 6, 4, 0x0005_0710);
-            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 6, 2, 0x000A_0F1D);
-        } else if mode == CapabilityMode::Balanced && is_active {
-            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 6, 3, 0x000A_0F1D);
+        // 1. Sombras projetadas suaves multicamada (Drop Shadows) ao redor da janela
+        if is_active {
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 6, 0x0005_0710);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 3, 0x000A_0F1D);
+        } else if mode != CapabilityMode::Basic {
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 2, 0x0005_0710);
         }
 
-        // Corpo da janela com cantos inferiores arredondados (R=6)
-        fill_rounded_rect(
-            buf,
-            screen_w,
-            screen_h,
-            rx,
-            ry,
-            rw,
-            rh,
-            6,
-            COLOR_CARD,
-        );
+        // 2. Fundo Translúcido com Desfoque de Wallpaper (Frosted Glass / Glassmorphism)
+        // Tint: rgba(15, 23, 42, 0.72) -> 0x000F_172A, alpha 184
+        if mode != CapabilityMode::Basic {
+            fill_acrylic_glass(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 0x000F_172A, 184);
+        } else {
+            fill_rounded_rect(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 0x000F_172A);
+        }
 
-        // Barra de título com cantos superiores arredondados (R=6)
-        fill_rounded_top(buf, screen_w, screen_h, rx, ry, rw, TITLE_BAR_HEIGHT, 6, title_color);
+        // 3. Barra de título contemporânea (R=12 no topo)
+        fill_rounded_top(buf, screen_w, screen_h, rx, ry, rw, TITLE_BAR_HEIGHT, 12, title_color);
 
-        // Borda externa arredondada de precisão
+        // 4. Borda interna luminosa sutil de 1px (rgba(255, 255, 255, 0.14) -> alpha 36)
+        if rw > 24 && rh > 24 {
+            draw_rounded_outline_alpha(buf, screen_w, screen_h, rx + 1, ry + 1, rw.saturating_sub(2), rh.saturating_sub(2), 11, 0x00FF_FFFF, 36);
+        }
+
+        // 5. Borda externa arredondada de precisão (R=12)
         draw_rounded_outline(
             buf,
             screen_w,
@@ -304,77 +304,76 @@ impl WindowManager {
             ry,
             rw,
             rh,
-            6,
+            12,
             border_color,
         );
 
-        // Bisel superior sutil (1px highlight para efeito acrílico moderno)
-        if rw > 12 {
-            let bevel_color = if is_active { 0x0047_5569 } else { 0x0024_3042 };
+        // 6. Bisel superior sutil (1px highlight para profundidade acrílica)
+        if rw > 24 {
+            let bevel_color = if is_active { 0x0064_748B } else { 0x0033_4155 };
             draw_line(
                 buf,
                 screen_w,
                 screen_h,
-                (rx + 6) as isize,
+                (rx + 12) as isize,
                 ry as isize,
-                (rx + rw.saturating_sub(6)) as isize,
+                (rx + rw.saturating_sub(12)) as isize,
                 ry as isize,
                 bevel_color,
             );
         }
 
-        // Acento luminescente sob o título na janela ativa (Garuda Neon Dr460nized)
-        if is_active {
+        // 7. Divisor sob a barra de título
+        let div_color = if is_active { COLOR_CYAN } else { 0x001E_293B };
+        draw_line(
+            buf,
+            screen_w,
+            screen_h,
+            rx as isize,
+            (ry + TITLE_BAR_HEIGHT) as isize,
+            (rx + rw) as isize,
+            (ry + TITLE_BAR_HEIGHT) as isize,
+            div_color,
+        );
+        if is_active && mode == CapabilityMode::Advanced {
             draw_line(
                 buf,
                 screen_w,
                 screen_h,
                 rx as isize,
-                (ry + TITLE_BAR_HEIGHT) as isize,
+                (ry + TITLE_BAR_HEIGHT + 1) as isize,
                 (rx + rw) as isize,
-                (ry + TITLE_BAR_HEIGHT) as isize,
-                COLOR_CYAN,
+                (ry + TITLE_BAR_HEIGHT + 1) as isize,
+                COLOR_PURPLE,
             );
-            if mode == CapabilityMode::Advanced {
-                draw_line(
-                    buf,
-                    screen_w,
-                    screen_h,
-                    rx as isize,
-                    (ry + TITLE_BAR_HEIGHT + 1) as isize,
-                    (rx + rw) as isize,
-                    (ry + TITLE_BAR_HEIGHT + 1) as isize,
-                    COLOR_PURPLE,
-                );
-            }
         }
 
-        // Título da janela com tipografia nítida antialiased
+        // 8. Título da janela com tipografia nítida antialiased (centralizado em 32px)
         let text_color = if is_active { COLOR_TEXT_PRI } else { COLOR_TEXT_MUTED };
-        draw_string_antialiased(buf, screen_w, screen_h, win.title_str(), rx + 10, ry + 4, text_color, Some(title_color));
+        draw_string_antialiased(buf, screen_w, screen_h, win.title_str(), rx + 14, ry + 8, text_color, Some(title_color));
 
-        // Trio de botões semáforo arredondados (Traffic-Light / elementary OS)
-        let btn_y = ry + 4;
+        // 9. Botões de controle circulares modernos (Traffic-Light circular com efeito hover luminoso)
+        let btn_y = ry + 8;
 
         if win.can_minimize {
             let btn_min_x = rx + rw.saturating_sub(64);
-            fill_rounded_rect(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, 4, COLOR_AMBER);
-            draw_rounded_outline(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, 4, 0x00D9_7706);
+            fill_rounded_rect(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, 8, COLOR_AMBER);
+            draw_rounded_outline(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, 8, 0x00D9_7706);
             draw_char_antialiased(buf, screen_w, screen_h, b'-', btn_min_x + 4, btn_y, COLOR_WHITE, Some(COLOR_AMBER), None);
         }
 
         if win.can_maximize {
             let btn_max_x = rx + rw.saturating_sub(44);
             let max_char = if win.is_maximized || win.is_snapped_left || win.is_snapped_right { b'^' } else { b'+' };
-            fill_rounded_rect(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 4, COLOR_EMERALD);
-            draw_rounded_outline(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 4, 0x0016_A34A);
+            fill_rounded_rect(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 8, COLOR_EMERALD);
+            draw_rounded_outline(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 8, 0x0016_A34A);
             draw_char_antialiased(buf, screen_w, screen_h, max_char, btn_max_x + 4, btn_y, COLOR_WHITE, Some(COLOR_EMERALD), None);
         }
 
         if win.can_close {
             let btn_close_x = rx + rw.saturating_sub(24);
-            fill_rounded_rect(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, 4, COLOR_RUBY);
-            draw_rounded_outline(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, 4, 0x00DC_2626);
+            fill_rounded_rect(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, 8, COLOR_RUBY);
+            draw_rounded_outline(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, 8, 0x00DC_2626);
             draw_char_antialiased(buf, screen_w, screen_h, b'X', btn_close_x + 4, btn_y, COLOR_WHITE, Some(COLOR_RUBY), None);
         }
     }

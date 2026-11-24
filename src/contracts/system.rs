@@ -39,6 +39,8 @@ pub struct SystemStats {
     pub dynamic_pages_freed: usize,
     pub vfs_open_fds: usize,
     pub vfs_mounted_volumes: usize,
+    pub net_tx_packets: u64,
+    pub net_rx_packets: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

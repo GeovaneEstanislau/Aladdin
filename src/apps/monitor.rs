@@ -111,12 +111,15 @@ impl SystemMonitorApp {
         draw_string(buf, screen_w, screen_h, "Status   : ", win_x + 12, win_y + 224, COLOR_TEXT_PRI, Some(COLOR_CARD));
         draw_string(buf, screen_w, screen_h, stats.net_state_desc, win_x + 100, win_y + 224, if has_ip { COLOR_CYAN } else { COLOR_AMBER }, Some(COLOR_CARD));
 
-        let is_sec = stats.jinnwall_profile == JinnWallProfile::PublicSecure;
-        draw_string(buf, screen_w, screen_h, "Firewall : Perfil ", win_x + 12, win_y + 242, COLOR_TEXT_PRI, Some(COLOR_CARD));
-        draw_string(buf, screen_w, screen_h, stats.jinnwall_profile.name(), win_x + 140, win_y + 242, if is_sec { COLOR_EMERALD } else { COLOR_CYAN }, Some(COLOR_CARD));
+        draw_label_and_num(buf, screen_w, screen_h, "Trafego  : TX ", stats.net_tx_packets as usize, " pkts", win_x + 12, win_y + 242, COLOR_TEXT_PRI, Some(COLOR_CARD));
+        draw_label_and_num(buf, screen_w, screen_h, " / RX ", stats.net_rx_packets as usize, " pkts", win_x + 180, win_y + 242, COLOR_CYAN, Some(COLOR_CARD));
 
-        draw_label_and_num(buf, screen_w, screen_h, "Conntrack: ", stats.jinnwall_active_conns, " fluxos ativos", win_x + 12, win_y + 260, COLOR_CYAN, Some(COLOR_CARD));
-        draw_label_and_num(buf, screen_w, screen_h, "Defesas  : Bloqueios ", stats.jinnwall_drops as usize, " pacotes DROP", win_x + 12, win_y + 278, COLOR_PURPLE, Some(COLOR_CARD));
-        draw_string(buf, screen_w, screen_h, "Seguranca: Ring 0 (Kernel) / Ring 3 (User ELF64)", win_x + 12, win_y + 296, COLOR_TEXT_MUTED, Some(COLOR_CARD));
+        let is_sec = stats.jinnwall_profile == JinnWallProfile::PublicSecure;
+        draw_string(buf, screen_w, screen_h, "Firewall : Perfil ", win_x + 12, win_y + 260, COLOR_TEXT_PRI, Some(COLOR_CARD));
+        draw_string(buf, screen_w, screen_h, stats.jinnwall_profile.name(), win_x + 140, win_y + 260, if is_sec { COLOR_EMERALD } else { COLOR_CYAN }, Some(COLOR_CARD));
+
+        draw_label_and_num(buf, screen_w, screen_h, "Conntrack: ", stats.jinnwall_active_conns, " fluxos ativos", win_x + 12, win_y + 278, COLOR_CYAN, Some(COLOR_CARD));
+        draw_label_and_num(buf, screen_w, screen_h, "Defesas  : Bloqueios ", stats.jinnwall_drops as usize, " pacotes DROP", win_x + 12, win_y + 296, COLOR_PURPLE, Some(COLOR_CARD));
+        draw_string(buf, screen_w, screen_h, "Seguranca: Ring 0 (Kernel) / Ring 3 (User ELF64)", win_x + 12, win_y + 314, COLOR_TEXT_MUTED, Some(COLOR_CARD));
     }
 }

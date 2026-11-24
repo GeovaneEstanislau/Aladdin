@@ -3,7 +3,7 @@
 use crate::contracts::framebuffer::DirtyRect;
 use crate::compositor::ClipRect;
 
-pub const TITLE_BAR_HEIGHT: usize = 24;
+pub const TITLE_BAR_HEIGHT: usize = 32;
 pub const BTN_SIZE: usize = 16;
 pub const RESIZE_GRIP_THICKNESS: usize = 6;
 pub const MIN_WINDOW_WIDTH: usize = 200;
@@ -213,21 +213,21 @@ impl Window {
     pub fn is_in_min_btn(&self, px: usize, py: usize) -> bool {
         if !self.can_minimize { return false; }
         let btn_x = self.x + self.width.saturating_sub(64);
-        let btn_y = self.y + 4;
+        let btn_y = self.y + (TITLE_BAR_HEIGHT.saturating_sub(BTN_SIZE)) / 2;
         px >= btn_x && px < btn_x + BTN_SIZE && py >= btn_y && py < btn_y + BTN_SIZE
     }
 
     pub fn is_in_max_btn(&self, px: usize, py: usize) -> bool {
         if !self.can_maximize { return false; }
         let btn_x = self.x + self.width.saturating_sub(44);
-        let btn_y = self.y + 4;
+        let btn_y = self.y + (TITLE_BAR_HEIGHT.saturating_sub(BTN_SIZE)) / 2;
         px >= btn_x && px < btn_x + BTN_SIZE && py >= btn_y && py < btn_y + BTN_SIZE
     }
 
     pub fn is_in_close_btn(&self, px: usize, py: usize) -> bool {
         if !self.can_close { return false; }
         let btn_x = self.x + self.width.saturating_sub(24);
-        let btn_y = self.y + 4;
+        let btn_y = self.y + (TITLE_BAR_HEIGHT.saturating_sub(BTN_SIZE)) / 2;
         px >= btn_x && px < btn_x + BTN_SIZE && py >= btn_y && py < btn_y + BTN_SIZE
     }
 
