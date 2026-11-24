@@ -476,6 +476,68 @@ pub fn fill_rounded_top(
     }
 }
 
+/// Preenche o topo da janela (cantos superiores arredondados) com translucidez alpha (Glassmorphism)
+pub fn fill_rounded_top_alpha(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    radius: usize,
+    color: u32,
+    alpha: u8,
+) {
+    if x >= screen_w || y >= screen_h || width == 0 || height == 0 { return; }
+    let r = radius.min(width / 2).min(height);
+    for row_idx in 0..height {
+        let cur_y = y + row_idx;
+        if cur_y >= screen_h { break; }
+
+        let cut = if r > 1 && row_idx < r { corner_cut(r, row_idx) } else { 0 };
+        let start_x = x + cut;
+        let end_x = (x + width.saturating_sub(cut)).min(screen_w);
+        if start_x < end_x {
+            let row_start = cur_y * screen_w;
+            for px in start_x..end_x {
+                buf[row_start + px] = alpha_blend(buf[row_start + px], color, alpha);
+            }
+        }
+    }
+}
+
+/// Traça linha com mesclagem alpha para reflexos especulares e biséis acrílicos
+pub fn draw_line_alpha(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    x0: isize,
+    y0: isize,
+    x1: isize,
+    y1: isize,
+    color: u32,
+    alpha: u8,
+) {
+    let dx = (x1 - x0).abs();
+    let dy = -(y1 - y0).abs();
+    let sx = if x0 < x1 { 1 } else { -1 };
+    let sy = if y0 < y1 { 1 } else { -1 };
+    let mut err = dx + dy;
+    let mut cx = x0;
+    let mut cy = y0;
+    loop {
+        if cx >= 0 && (cx as usize) < screen_w && cy >= 0 && (cy as usize) < screen_h {
+            let idx = (cy as usize) * screen_w + (cx as usize);
+            buf[idx] = alpha_blend(buf[idx], color, alpha);
+        }
+        if cx == x1 && cy == y1 { break; }
+        let e2 = 2 * err;
+        if e2 >= dy { err += dy; cx += sx; }
+        if e2 <= dx { err += dx; cy += sy; }
+    }
+}
+
 /// Desenha contorno com cantos superiores arredondados e base reta
 pub fn draw_rounded_top_outline(
     buf: &mut [u32],
@@ -666,7 +728,7 @@ pub fn box_blur_rect(
     }
 
     let total_pixels = w * h;
-    const STATIC_SCRATCH_SIZE: usize = 1024 * 128; // 128K pixels (512 KiB em .bss)
+    const STATIC_SCRATCH_SIZE: usize = 1024 * 768; // 768K pixels (3 MiB em .bss sem alocação dinâmica)
     static mut STATIC_SCRATCH: [u32; STATIC_SCRATCH_SIZE] = [0u32; STATIC_SCRATCH_SIZE];
 
     let mut fallback_vec = alloc::vec::Vec::new();
@@ -768,8 +830,8 @@ pub fn fill_acrylic_glass(
 ) {
     if x >= screen_w || y >= screen_h || width == 0 || height == 0 { return; }
 
-    // 1. Aplica o blur no conteúdo real já desenhado no buffer (wallpaper / janelas inferiores)
-    let blur_r = 4.min(width / 4).min(height / 4).max(1);
+    // 1. Aplica o blur multi-pass/kawase aprimorado no conteúdo real já desenhado no buffer (wallpaper / janelas inferiores)
+    let blur_r = 8.min(width / 4).min(height / 4).max(2);
     box_blur_rect(buf, screen_w, screen_h, x, y, width, height, blur_r);
 
     // 2. Aplica a tonalidade acrílica respeitando os cantos arredondados

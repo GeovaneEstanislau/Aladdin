@@ -16,8 +16,8 @@ pub fn render_wingpanel(
     mode: CapabilityMode,
     start_menu_open: bool,
 ) {
-    // 1. Fundo acrílico translúcido do Wingpanel com desfoque real (Glassmorphism)
-    fill_acrylic_surface(buf, screen_w, screen_h, 0, 0, screen_w, WINGPANEL_HEIGHT, 0, 0x000F_172A, 190, mode);
+    // 1. Fundo acrílico translúcido do Wingpanel com desfoque real (Glassmorphism suave com alpha 140)
+    fill_acrylic_surface(buf, screen_w, screen_h, 0, 0, screen_w, WINGPANEL_HEIGHT, 0, 0x000F_172A, 140, mode);
     draw_line(buf, screen_w, screen_h, 0, WINGPANEL_HEIGHT as isize, screen_w as isize, WINGPANEL_HEIGHT as isize, 0x001E_293B);
 
     // Linha de acento sutil neon inferior se modo Advanced

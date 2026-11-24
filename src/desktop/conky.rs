@@ -23,8 +23,8 @@ pub fn render_conky_hud(
     // 1. Sombra de elevação suave (Drop shadow)
     draw_drop_shadow_rounded(buf, screen_w, screen_h, x, y, CONKY_WIDTH, CONKY_HEIGHT, 10, 4, COLOR_SHADOW);
 
-    // 2. Fundo em vidro acrílico translúcido escuro (Frosted Glass)
-    fill_acrylic_glass(buf, screen_w, screen_h, x, y, CONKY_WIDTH, CONKY_HEIGHT, 10, 0x000B_0F19, 175);
+    // 2. Fundo em vidro acrílico translúcido escuro (Frosted Glass suave com alpha 140)
+    fill_acrylic_glass(buf, screen_w, screen_h, x, y, CONKY_WIDTH, CONKY_HEIGHT, 10, 0x000B_0F19, 140);
     draw_rounded_outline(buf, screen_w, screen_h, x, y, CONKY_WIDTH, CONKY_HEIGHT, 10, 0x001E_3A5F);
 
     // 3. Cabeçalho: --- JINN MICROKERNEL --- JAHA 1.2

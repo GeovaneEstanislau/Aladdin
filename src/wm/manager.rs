@@ -269,34 +269,44 @@ impl WindowManager {
         let rh = win.render_height();
 
         let title_color = if is_active { 0x0016_2032 } else { 0x000F_172A };
-        let border_color = if is_active { COLOR_BORDER_ACT } else { COLOR_BORDER };
+        let _border_color = if is_active { COLOR_BORDER_ACT } else { COLOR_BORDER };
 
-        // 1. Sombras projetadas suaves multicamada (Drop Shadows) ao redor da janela
+        // 1. Sombras projetadas suaves multicamada (Drop Shadows de 16px) ao redor da janela ativa
         if is_active {
-            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 6, 0x0005_0710);
-            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 3, 0x000A_0F1D);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 16, 0x0004_060C);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 8, 0x0008_0D18);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 3, 0x000E_1526);
         } else if mode != CapabilityMode::Basic {
-            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 2, 0x0005_0710);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 6, 0x0004_060C);
         }
 
         // 2. Fundo Translúcido com Desfoque de Wallpaper (Frosted Glass / Glassmorphism)
-        // Tint: rgba(15, 23, 42, 0.72) -> 0x000F_172A, alpha 184
+        // Faixa de opacidade 145..165 (~58% a 64% de opacidade) para permitir enxergar o wallpaper
+        let window_tint_alpha = if is_active { 158 } else { 146 };
         if mode != CapabilityMode::Basic {
-            fill_acrylic_glass(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 0x000F_172A, 184);
+            fill_acrylic_glass(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 0x000F_172A, window_tint_alpha);
         } else {
             fill_rounded_rect(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 0x000F_172A);
         }
 
-        // 3. Barra de título contemporânea (R=12 no topo)
-        fill_rounded_top(buf, screen_w, screen_h, rx, ry, rw, TITLE_BAR_HEIGHT, 12, title_color);
+        // 3. Barra de título contemporânea (R=12 no topo) com translucidez acrílica
+        let title_alpha = if is_active { 160 } else { 142 };
+        fill_rounded_top_alpha(buf, screen_w, screen_h, rx, ry, rw, TITLE_BAR_HEIGHT, 12, title_color, title_alpha);
 
-        // 4. Borda interna luminosa sutil de 1px (rgba(255, 255, 255, 0.14) -> alpha 36)
+        // 4. Camada sutil de brilho especular no topo da janela (rgba(255, 255, 255, 0.18))
+        if rw > 24 {
+            let spec_color = 0x00FF_FFFF;
+            draw_line_alpha(buf, screen_w, screen_h, (rx + 12) as isize, (ry + 1) as isize, (rx + rw.saturating_sub(12)) as isize, (ry + 1) as isize, spec_color, 46);
+            draw_line_alpha(buf, screen_w, screen_h, (rx + 14) as isize, (ry + 2) as isize, (rx + rw.saturating_sub(14)) as isize, (ry + 2) as isize, spec_color, 24);
+        }
+
+        // 5. Borda interna luminosa sutil de 1px (rgba(255, 255, 255, 0.14) -> alpha 36)
         if rw > 24 && rh > 24 {
             draw_rounded_outline_alpha(buf, screen_w, screen_h, rx + 1, ry + 1, rw.saturating_sub(2), rh.saturating_sub(2), 11, 0x00FF_FFFF, 36);
         }
 
-        // 5. Borda externa arredondada de precisão (R=12)
-        draw_rounded_outline(
+        // 6. Borda externa translúcida de 1px solid rgba(255, 255, 255, 0.22) (alpha 56)
+        draw_rounded_outline_alpha(
             buf,
             screen_w,
             screen_h,
@@ -305,23 +315,9 @@ impl WindowManager {
             rw,
             rh,
             12,
-            border_color,
+            0x00FF_FFFF,
+            56,
         );
-
-        // 6. Bisel superior sutil (1px highlight para profundidade acrílica)
-        if rw > 24 {
-            let bevel_color = if is_active { 0x0064_748B } else { 0x0033_4155 };
-            draw_line(
-                buf,
-                screen_w,
-                screen_h,
-                (rx + 12) as isize,
-                ry as isize,
-                (rx + rw.saturating_sub(12)) as isize,
-                ry as isize,
-                bevel_color,
-            );
-        }
 
         // 7. Divisor sob a barra de título
         let div_color = if is_active { COLOR_CYAN } else { 0x001E_293B };

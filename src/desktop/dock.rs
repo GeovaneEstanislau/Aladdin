@@ -137,8 +137,8 @@ pub fn render_dock(
     // 1. Sombra suave de elevação (Drop Shadow)
     draw_drop_shadow_rounded(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, 22, 4, COLOR_SHADOW);
 
-    // 2. Superfície flutuante translúcida do Dock (Frosted Glass R=22)
-    fill_acrylic_glass(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, 22, 0x000B_0F19, 185);
+    // 2. Superfície flutuante translúcida do Dock (Frosted Glass R=22 suave com alpha 140)
+    fill_acrylic_glass(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, 22, 0x000B_0F19, 140);
     draw_rounded_outline(buf, screen_w, screen_h, dock_x, dock_y, DOCK_WIDTH, DOCK_HEIGHT, 22, 0x002A_3E58);
 
     let slot_span = 53;
