@@ -347,6 +347,76 @@ pub fn draw_rounded_outline(
     }
 }
 
+/// Calcula a cobertura alpha (0 a 255) de um ponto em relação a um quarto de círculo de raio `r`
+/// utilizando 4x supersampling (4 subamostras com coordenadas fracionárias de ponto fixo).
+#[inline]
+pub fn corner_alpha_4x(r: usize, dx_from_center: usize, dy_from_center: usize) -> u8 {
+    let r_sub = (r * 4) as isize;
+    let r_sq = r_sub * r_sub;
+
+    let sx0 = (dx_from_center * 4 + 1) as isize;
+    let sx1 = (dx_from_center * 4 + 3) as isize;
+    let sy0 = (dy_from_center * 4 + 1) as isize;
+    let sy1 = (dy_from_center * 4 + 3) as isize;
+
+    let mut inside = 0u8;
+    if sx0 * sx0 + sy0 * sy0 <= r_sq { inside += 1; }
+    if sx1 * sx1 + sy0 * sy0 <= r_sq { inside += 1; }
+    if sx0 * sx0 + sy1 * sy1 <= r_sq { inside += 1; }
+    if sx1 * sx1 + sy1 * sy1 <= r_sq { inside += 1; }
+
+    match inside {
+        4 => 255,
+        3 => 192,
+        2 => 128,
+        1 => 64,
+        _ => 0,
+    }
+}
+
+/// Preenche um retângulo com cantos arredondados e mesclagem alfa contínua
+pub fn fill_rounded_rect_alpha(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    radius: usize,
+    color: u32,
+    alpha: u8,
+) {
+    if x >= screen_w || y >= screen_h || width == 0 || height == 0 || alpha == 0 { return; }
+    let r = radius.min(width / 2).min(height / 2);
+
+    for row_idx in 0..height {
+        let cur_y = y + row_idx;
+        if cur_y >= screen_h { break; }
+
+        let cut = if r > 1 {
+            if row_idx < r {
+                corner_cut(r, row_idx)
+            } else if row_idx >= height - r {
+                corner_cut(r, height - 1 - row_idx)
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+
+        let start_x = x + cut;
+        let end_x = (x + width.saturating_sub(cut)).min(screen_w);
+        if start_x < end_x {
+            let row_start = cur_y * screen_w;
+            for px in start_x..end_x {
+                buf[row_start + px] = alpha_blend(buf[row_start + px], color, alpha);
+            }
+        }
+    }
+}
+
 /// Desenha contorno arredondado com mesclagem alfa (alpha blend)
 pub fn draw_rounded_outline_alpha(
     buf: &mut [u32],
@@ -685,7 +755,7 @@ pub fn draw_drop_shadow(
     fill_rounded_rect(buf, screen_w, screen_h, x + offset, y + offset, width, height, radius, shadow_color);
 }
 
-/// Projeta sombra com raio explícito de arredondamento
+/// Projeta sombra suave multicamada com difusão alpha e cantos arredondados
 pub fn draw_drop_shadow_rounded(
     buf: &mut [u32],
     screen_w: usize,
@@ -698,7 +768,21 @@ pub fn draw_drop_shadow_rounded(
     offset: usize,
     shadow_color: u32,
 ) {
-    fill_rounded_rect(buf, screen_w, screen_h, x + offset, y + offset, width, height, radius, shadow_color);
+    if width == 0 || height == 0 || offset == 0 { return; }
+    let shadow_x = x.saturating_add(offset / 3);
+    let shadow_y = y.saturating_add(offset / 2);
+    let shadow_w = width.saturating_add(offset / 2);
+    let shadow_h = height.saturating_add(offset / 2);
+    let shadow_r = radius + offset / 3;
+
+    let alpha = match offset {
+        0..=3 => 120,
+        4..=8 => 75,
+        9..=16 => 45,
+        _ => 25,
+    };
+
+    fill_rounded_rect_alpha(buf, screen_w, screen_h, shadow_x, shadow_y, shadow_w, shadow_h, shadow_r, shadow_color, alpha);
 }
 
 // ── Efeitos de Acrílico e Desfoque Real (Glassmorphism & Real Blur) ──────────
@@ -859,6 +943,94 @@ pub fn fill_acrylic_glass(
             for px in start_x..end_x {
                 let blurred = buf[row_start + px];
                 buf[row_start + px] = alpha_blend(blurred, tint_color, tint_alpha);
+            }
+        }
+    }
+}
+
+/// Preenche uma superfície acrílica com gradiente sutil vertical e cantos antialiased (4x supersampling)
+pub fn fill_acrylic_glass_gradient(
+    buf: &mut [u32],
+    screen_w: usize,
+    screen_h: usize,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    radius: usize,
+    top_color: u32,
+    top_alpha: u8,
+    bot_color: u32,
+    bot_alpha: u8,
+) {
+    if x >= screen_w || y >= screen_h || width == 0 || height == 0 { return; }
+
+    // 1. Desfoque real multi-pass do fundo subjacente (wallpaper e janelas inferiores)
+    let blur_r = 8.min(width / 4).min(height / 4).max(2);
+    box_blur_rect(buf, screen_w, screen_h, x, y, width, height, blur_r);
+
+    // 2. Gradiente vertical multicamadas com 4x supersampling nas arestas curvas
+    let r = radius.min(width / 2).min(height / 2);
+    let top_r = (top_color >> 16) & 0xFF;
+    let top_g = (top_color >> 8) & 0xFF;
+    let top_b = top_color & 0xFF;
+
+    let bot_r = (bot_color >> 16) & 0xFF;
+    let bot_g = (bot_color >> 8) & 0xFF;
+    let bot_b = bot_color & 0xFF;
+
+    for row_idx in 0..height {
+        let cur_y = y + row_idx;
+        if cur_y >= screen_h { break; }
+        let row_start = cur_y * screen_w;
+
+        // Interpolação linear da cor e opacidade vertical
+        let t = ((row_idx * 256) / height.max(1)) as u32;
+        let cr = (top_r * (256 - t) + bot_r * t) / 256;
+        let cg = (top_g * (256 - t) + bot_g * t) / 256;
+        let cb = (top_b * (256 - t) + bot_b * t) / 256;
+        let row_color = (cr << 16) | (cg << 8) | cb;
+        let row_alpha = (((top_alpha as u32) * (256 - t) + (bot_alpha as u32) * t) / 256) as u8;
+
+        let cut = if r > 1 {
+            if row_idx < r {
+                corner_cut(r, row_idx)
+            } else if row_idx >= height - r {
+                corner_cut(r, height - 1 - row_idx)
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+
+        let start_x = x + cut;
+        let end_x = (x + width.saturating_sub(cut)).min(screen_w);
+        if start_x < end_x {
+            for px in start_x..end_x {
+                let current = buf[row_start + px];
+                buf[row_start + px] = alpha_blend(current, row_color, row_alpha);
+            }
+        }
+
+        // Suavização das arestas externas com 4x supersampling
+        if r > 1 && (row_idx < r || row_idx >= height - r) {
+            let dy_center = if row_idx < r { r - 1 - row_idx } else { row_idx - (height - r) };
+            if cut > 0 && x + cut > 0 && x + cut <= screen_w {
+                let px = x + cut - 1;
+                let cov = corner_alpha_4x(r, r - cut, dy_center);
+                if cov > 0 && cov < 255 {
+                    let eff_alpha = ((row_alpha as u32 * cov as u32) / 255) as u8;
+                    buf[row_start + px] = alpha_blend(buf[row_start + px], row_color, eff_alpha);
+                }
+            }
+            let rx = x + width - cut;
+            if rx < screen_w {
+                let cov = corner_alpha_4x(r, r - cut, dy_center);
+                if cov > 0 && cov < 255 {
+                    let eff_alpha = ((row_alpha as u32 * cov as u32) / 255) as u8;
+                    buf[row_start + rx] = alpha_blend(buf[row_start + rx], row_color, eff_alpha);
+                }
             }
         }
     }

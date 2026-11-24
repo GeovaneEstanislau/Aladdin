@@ -17,7 +17,7 @@ pub const START_MENU_ITEMS: [(&str, u32, bool); 11] = [
     ("Softwares & Updates", COLOR_EMERALD, false),
     ("Sobre o Jinn OS", COLOR_TEXT_SEC, false),
     ("Ciclar Perfil JSA", COLOR_AMBER, false),
-    ("Reiniciar Maquina", COLOR_AMBER, false),
+    ("Reiniciar Máquina", COLOR_AMBER, false),
     ("Desligar Sistema", 0x00F4_3F5E, false),
     ("Sair para Shell (ESC)", COLOR_RUBY, true),
 ];
@@ -38,7 +38,7 @@ pub fn render_start_menu(
 
     // 3. Cabeçalho moderno
     fill_rounded_top(buf, screen_w, screen_h, MENU_X + 1, MENU_Y + 1, MENU_W - 2, 26, 7, COLOR_SURFACE_L0);
-    draw_string(buf, screen_w, screen_h, "Aladdin Aplicativos", MENU_X + 12, MENU_Y + 7, COLOR_TEXT_PRI, Some(COLOR_SURFACE_L0));
+    draw_string_antialiased(buf, screen_w, screen_h, "Aladdin Aplicativos", MENU_X + 12, MENU_Y + 7, COLOR_TEXT_PRI, Some(COLOR_SURFACE_L0));
     draw_line(buf, screen_w, screen_h, MENU_X as isize, (MENU_Y + 27) as isize, (MENU_X + MENU_W) as isize, (MENU_Y + 27) as isize, COLOR_BORDER_SUBTLE);
 
     for (idx, &(title, item_color, is_exit)) in START_MENU_ITEMS.iter().enumerate() {
@@ -53,12 +53,12 @@ pub fn render_start_menu(
 
         // Tag [X] apenas para ação de encerramento / saída
         if is_exit {
-            draw_string(buf, screen_w, screen_h, "[X]", MENU_X + 10, item_y + 5, COLOR_RUBY, Some(item_bg));
+            draw_string_antialiased(buf, screen_w, screen_h, "[X]", MENU_X + 10, item_y + 5, COLOR_RUBY, Some(item_bg));
             let text_color = if is_hover { COLOR_WHITE } else { COLOR_TEXT_PRI };
-            draw_string(buf, screen_w, screen_h, title, MENU_X + 40, item_y + 5, text_color, Some(item_bg));
+            draw_string_antialiased(buf, screen_w, screen_h, title, MENU_X + 40, item_y + 5, text_color, Some(item_bg));
         } else {
             let text_color = if is_hover { COLOR_WHITE } else { item_color };
-            draw_string(buf, screen_w, screen_h, title, MENU_X + 14, item_y + 5, text_color, Some(item_bg));
+            draw_string_antialiased(buf, screen_w, screen_h, title, MENU_X + 14, item_y + 5, text_color, Some(item_bg));
         }
 
         // Divisor sutil antes das ações de energia

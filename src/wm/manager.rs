@@ -268,44 +268,60 @@ impl WindowManager {
         let rw = win.render_width();
         let rh = win.render_height();
 
+        let win_r = 14;
         let title_color = if is_active { 0x0016_2032 } else { 0x000F_172A };
-        let _border_color = if is_active { COLOR_BORDER_ACT } else { COLOR_BORDER };
 
-        // 1. Sombras projetadas suaves multicamada (Drop Shadows de 16px) ao redor da janela ativa
+        // 1. Sombras projetadas suaves multicamada de 24px (Drop Shadows de elevação realista)
         if is_active {
-            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 16, 0x0004_060C);
-            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 8, 0x0008_0D18);
-            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 3, 0x000E_1526);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, win_r, 24, 0x0003_050A);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, win_r, 14, 0x0006_0912);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, win_r, 6, 0x000B_1020);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, win_r, 2, 0x0012_1A30);
         } else if mode != CapabilityMode::Basic {
-            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 6, 0x0004_060C);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, win_r, 10, 0x0004_060C);
+            draw_drop_shadow_rounded(buf, screen_w, screen_h, rx, ry, rw, rh, win_r, 4, 0x0008_0D18);
         }
 
-        // 2. Fundo Translúcido com Desfoque de Wallpaper (Frosted Glass / Glassmorphism)
-        // Faixa de opacidade 145..165 (~58% a 64% de opacidade) para permitir enxergar o wallpaper
-        let window_tint_alpha = if is_active { 158 } else { 146 };
+        // 2. Fundo Multicamadas com Desfoque Acrílico Real e Gradiente Vertical:
+        //    rgba(18, 24, 38, 0.68) [alpha 173] a rgba(12, 16, 26, 0.78) [alpha 199]
         if mode != CapabilityMode::Basic {
-            fill_acrylic_glass(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 0x000F_172A, window_tint_alpha);
+            let (top_a, bot_a) = if is_active { (173, 199) } else { (155, 185) };
+            fill_acrylic_glass_gradient(
+                buf,
+                screen_w,
+                screen_h,
+                rx,
+                ry,
+                rw,
+                rh,
+                win_r,
+                0x0012_1826,
+                top_a,
+                0x000C_101A,
+                bot_a,
+            );
         } else {
-            fill_rounded_rect(buf, screen_w, screen_h, rx, ry, rw, rh, 12, 0x000F_172A);
+            fill_rounded_rect(buf, screen_w, screen_h, rx, ry, rw, rh, win_r, 0x000F_172A);
         }
 
-        // 3. Barra de título contemporânea (R=12 no topo) com translucidez acrílica
-        let title_alpha = if is_active { 160 } else { 142 };
-        fill_rounded_top_alpha(buf, screen_w, screen_h, rx, ry, rw, TITLE_BAR_HEIGHT, 12, title_color, title_alpha);
+        // 3. Barra de título contemporânea (R=14 no topo) com translucidez acrílica
+        let title_alpha = if is_active { 165 } else { 145 };
+        fill_rounded_top_alpha(buf, screen_w, screen_h, rx, ry, rw, TITLE_BAR_HEIGHT, win_r, title_color, title_alpha);
 
-        // 4. Camada sutil de brilho especular no topo da janela (rgba(255, 255, 255, 0.18))
-        if rw > 24 {
+        // 4. Camada de brilho especular no topo da janela (rgba(255, 255, 255, 0.22))
+        if rw > 30 {
             let spec_color = 0x00FF_FFFF;
-            draw_line_alpha(buf, screen_w, screen_h, (rx + 12) as isize, (ry + 1) as isize, (rx + rw.saturating_sub(12)) as isize, (ry + 1) as isize, spec_color, 46);
-            draw_line_alpha(buf, screen_w, screen_h, (rx + 14) as isize, (ry + 2) as isize, (rx + rw.saturating_sub(14)) as isize, (ry + 2) as isize, spec_color, 24);
+            draw_line_alpha(buf, screen_w, screen_h, (rx + win_r) as isize, (ry + 1) as isize, (rx + rw.saturating_sub(win_r)) as isize, (ry + 1) as isize, spec_color, 56);
+            draw_line_alpha(buf, screen_w, screen_h, (rx + win_r + 2) as isize, (ry + 2) as isize, (rx + rw.saturating_sub(win_r + 2)) as isize, (ry + 2) as isize, spec_color, 28);
         }
 
-        // 5. Borda interna luminosa sutil de 1px (rgba(255, 255, 255, 0.14) -> alpha 36)
-        if rw > 24 && rh > 24 {
-            draw_rounded_outline_alpha(buf, screen_w, screen_h, rx + 1, ry + 1, rw.saturating_sub(2), rh.saturating_sub(2), 11, 0x00FF_FFFF, 36);
+        // 5. Borda interna luminosa sutil de 1px (rgba(255, 255, 255, 0.22) -> alpha 56)
+        if rw > 30 && rh > 30 {
+            draw_rounded_outline_alpha(buf, screen_w, screen_h, rx + 1, ry + 1, rw.saturating_sub(2), rh.saturating_sub(2), win_r - 1, 0x00FF_FFFF, 56);
         }
 
-        // 6. Borda externa translúcida de 1px solid rgba(255, 255, 255, 0.22) (alpha 56)
+        // 6. Borda externa translúcida de 1px com cantos suaves
+        let out_border_alpha = if is_active { 75 } else { 45 };
         draw_rounded_outline_alpha(
             buf,
             screen_w,
@@ -314,9 +330,9 @@ impl WindowManager {
             ry,
             rw,
             rh,
-            12,
+            win_r,
             0x00FF_FFFF,
-            56,
+            out_border_alpha,
         );
 
         // 7. Divisor sob a barra de título
@@ -344,33 +360,33 @@ impl WindowManager {
             );
         }
 
-        // 8. Título da janela com tipografia nítida antialiased (centralizado em 32px)
-        let text_color = if is_active { COLOR_TEXT_PRI } else { COLOR_TEXT_MUTED };
-        draw_string_antialiased(buf, screen_w, screen_h, win.title_str(), rx + 14, ry + 8, text_color, Some(title_color));
+        // 8. Título da janela com hierarquia tipográfica nítida (16px Header semi-bold)
+        let text_color = if is_active { COLOR_WHITE } else { COLOR_TEXT_MUTED };
+        draw_string_antialiased(buf, screen_w, screen_h, win.title_str(), rx + 16, ry + 10, text_color, Some(title_color));
 
-        // 9. Botões de controle circulares modernos (Traffic-Light circular com efeito hover luminoso)
+        // 9. Controles modernos de janela estilo semáforo (Traffic-Light circular com brilho)
         let btn_y = ry + 8;
 
         if win.can_minimize {
-            let btn_min_x = rx + rw.saturating_sub(64);
-            fill_rounded_rect(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, 8, COLOR_AMBER);
+            let btn_min_x = rx + rw.saturating_sub(66);
+            fill_rounded_rect(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, 8, 0x00F5_9E0B);
             draw_rounded_outline(buf, screen_w, screen_h, btn_min_x, btn_y, 16, 16, 8, 0x00D9_7706);
-            draw_char_antialiased(buf, screen_w, screen_h, b'-', btn_min_x + 4, btn_y, COLOR_WHITE, Some(COLOR_AMBER), None);
+            draw_char_antialiased(buf, screen_w, screen_h, '-', btn_min_x + 4, btn_y + 1, COLOR_WHITE, Some(0x00F5_9E0B), None);
         }
 
         if win.can_maximize {
             let btn_max_x = rx + rw.saturating_sub(44);
-            let max_char = if win.is_maximized || win.is_snapped_left || win.is_snapped_right { b'^' } else { b'+' };
-            fill_rounded_rect(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 8, COLOR_EMERALD);
-            draw_rounded_outline(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 8, 0x0016_A34A);
-            draw_char_antialiased(buf, screen_w, screen_h, max_char, btn_max_x + 4, btn_y, COLOR_WHITE, Some(COLOR_EMERALD), None);
+            let max_char = if win.is_maximized || win.is_snapped_left || win.is_snapped_right { '^' } else { '+' };
+            fill_rounded_rect(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 8, 0x0010_B981);
+            draw_rounded_outline(buf, screen_w, screen_h, btn_max_x, btn_y, 16, 16, 8, 0x0005_9669);
+            draw_char_antialiased(buf, screen_w, screen_h, max_char, btn_max_x + 4, btn_y + 1, COLOR_WHITE, Some(0x0010_B981), None);
         }
 
         if win.can_close {
-            let btn_close_x = rx + rw.saturating_sub(24);
-            fill_rounded_rect(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, 8, COLOR_RUBY);
+            let btn_close_x = rx + rw.saturating_sub(22);
+            fill_rounded_rect(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, 8, 0x00EF_4444);
             draw_rounded_outline(buf, screen_w, screen_h, btn_close_x, btn_y, 16, 16, 8, 0x00DC_2626);
-            draw_char_antialiased(buf, screen_w, screen_h, b'X', btn_close_x + 4, btn_y, COLOR_WHITE, Some(COLOR_RUBY), None);
+            draw_char_antialiased(buf, screen_w, screen_h, 'x', btn_close_x + 4, btn_y + 1, COLOR_WHITE, Some(0x00EF_4444), None);
         }
     }
 }

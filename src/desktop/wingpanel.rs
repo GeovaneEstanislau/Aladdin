@@ -53,10 +53,10 @@ pub fn render_wingpanel(
     // "Jinn OS v0.0.3-alpha | x86_64 Bare-Metal | GitHub"
     let brand_x = 22;
     let brand_y = 10;
-    draw_string(buf, screen_w, screen_h, "Jinn OS", brand_x, brand_y, COLOR_WHITE, None);
-    draw_string(buf, screen_w, screen_h, "v0.0.3-alpha", brand_x + 64, brand_y, COLOR_CYAN_NEON, None);
-    draw_string(buf, screen_w, screen_h, "| x86_64 Bare-Metal |", brand_x + 168, brand_y, COLOR_TEXT_MUTED, None);
-    draw_string(buf, screen_w, screen_h, "GitHub", brand_x + 344, brand_y, COLOR_TEXT_SEC, None);
+    draw_string_antialiased(buf, screen_w, screen_h, "Jinn OS", brand_x, brand_y, COLOR_WHITE, None);
+    draw_string_antialiased(buf, screen_w, screen_h, "v0.0.3-alpha", brand_x + 64, brand_y, COLOR_CYAN_NEON, None);
+    draw_string_antialiased(buf, screen_w, screen_h, "| x86_64 Bare-Metal |", brand_x + 168, brand_y, COLOR_TEXT_MUTED, None);
+    draw_string_antialiased(buf, screen_w, screen_h, "GitHub", brand_x + 344, brand_y, COLOR_TEXT_SEC, None);
 
     // 3. Lado Direito: Cápsula de Telemetria e Monitor do Sistema
     let right_capsule_w = 460;
@@ -70,14 +70,14 @@ pub fn render_wingpanel(
 
         // CPU Telemetry
         let mut cur_x = cap_x + 10;
-        draw_string(buf, screen_w, screen_h, "CPU:", cur_x, cap_y + 4, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
+        draw_string_telemetry(buf, screen_w, screen_h, "CPU:", cur_x, cap_y + 4, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
         cur_x += 34;
         let cpu_pct = ((stats.current_tick % 8) + 2) as usize;
         draw_label_and_num(buf, screen_w, screen_h, "", cpu_pct, "% | ", cur_x, cap_y + 4, COLOR_CYAN_NEON, Some(COLOR_SURFACE_L1));
         cur_x += 44;
 
         // RAM Telemetry
-        draw_string(buf, screen_w, screen_h, "RAM:", cur_x, cap_y + 4, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
+        draw_string_telemetry(buf, screen_w, screen_h, "RAM:", cur_x, cap_y + 4, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
         cur_x += 34;
         draw_label_and_num(buf, screen_w, screen_h, "", stats.used_ram_mb, "/", cur_x, cap_y + 4, COLOR_EMERALD, Some(COLOR_SURFACE_L1));
         cur_x += 36;
@@ -85,11 +85,11 @@ pub fn render_wingpanel(
         cur_x += 54;
 
         // SMP Cores & Storage
-        draw_string(buf, screen_w, screen_h, "4 Cores | ", cur_x, cap_y + 4, COLOR_AMBER, Some(COLOR_SURFACE_L1));
+        draw_string_telemetry(buf, screen_w, screen_h, "4 Cores | ", cur_x, cap_y + 4, COLOR_AMBER, Some(COLOR_SURFACE_L1));
         cur_x += 80;
 
-        draw_string(buf, screen_w, screen_h, storage_profile, cur_x, cap_y + 4, COLOR_TEXT_SEC, Some(COLOR_SURFACE_L1));
-        cur_x += storage_profile.len() * FONT_WIDTH + 8;
+        draw_string_telemetry(buf, screen_w, screen_h, storage_profile, cur_x, cap_y + 4, COLOR_TEXT_SEC, Some(COLOR_SURFACE_L1));
+        cur_x += text_width(storage_profile) + 8;
 
         draw_label_and_num(buf, screen_w, screen_h, "Up:", stats.uptime_secs as usize, "s", cur_x, cap_y + 4, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
     }
@@ -97,5 +97,5 @@ pub fn render_wingpanel(
     // 4. Botão Sair [X] no extremo direito
     let exit_x = screen_w.saturating_sub(68);
     draw_pill(buf, screen_w, screen_h, exit_x, 4, 60, 20, COLOR_RUBY, 0x00F8_7171);
-    draw_string(buf, screen_w, screen_h, "[X] Sair", exit_x + 4, 8, COLOR_WHITE, Some(COLOR_RUBY));
+    draw_string_antialiased(buf, screen_w, screen_h, "[X] Sair", exit_x + 4, 8, COLOR_WHITE, Some(COLOR_RUBY));
 }

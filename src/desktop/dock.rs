@@ -170,11 +170,11 @@ pub fn render_dock(
             draw_rounded_outline(buf, screen_w, screen_h, sx.saturating_sub(1), icon_y.saturating_sub(1), DOCK_ICON_SIZE + 2, DOCK_ICON_SIZE + 2, DOCK_ICON_RADIUS + 1, COLOR_WHITE);
         }
 
-        // 5. Glifo/Ícone centralizado
-        let icon_w = slot.icon_text.len() * FONT_WIDTH;
+        // 5. Glifo/Ícone centralizado com tipografia antialiased
+        let icon_w = text_width(slot.icon_text);
         let tx = sx + (DOCK_ICON_SIZE.saturating_sub(icon_w)) / 2;
         let ty = icon_y + (DOCK_ICON_SIZE.saturating_sub(FONT_HEIGHT)) / 2;
-        draw_string(buf, screen_w, screen_h, slot.icon_text, tx, ty, slot.fg_color, Some(slot.bg_color));
+        draw_string_antialiased(buf, screen_w, screen_h, slot.icon_text, tx, ty, slot.fg_color, Some(slot.bg_color));
 
         // 6. Reflexo característico do Cairo-Dock (Vertical Inverted Glow Reflection)
         let refl_start_y = icon_y + DOCK_ICON_SIZE + 1;
@@ -183,7 +183,7 @@ pub fn render_dock(
             if ry >= screen_h || ry >= dock_y + DOCK_HEIGHT - 3 { break; }
 
             // Gradiente suave de transparência: mais visível próximo à base, desvanecendo a zero
-            let alpha = (((DOCK_REFLECTION_H - dy) * 70) / DOCK_REFLECTION_H) as u8;
+            let alpha = (((DOCK_REFLECTION_H - dy) * 75) / DOCK_REFLECTION_H) as u8;
             let refl_color = slot.bg_color;
 
             let row_start = ry * screen_w;
@@ -198,20 +198,24 @@ pub fn render_dock(
             }
         }
 
-        // 7. Ponto Indicador de Janela Ativa (na base do dock)
+        // 7. Luz Indicadora de Janela Ativa (Dot/Pill refinado na base do dock)
         if win_id != usize::MAX && win_id < wm.windows.len() {
             if let Some(w) = wm.windows[win_id] {
-                let dot_y = dock_y + DOCK_HEIGHT.saturating_sub(5);
-                let dot_x = sx + (DOCK_ICON_SIZE / 2).saturating_sub(10);
+                let dot_y = dock_y + DOCK_HEIGHT.saturating_sub(6);
+                let center_x = sx + (DOCK_ICON_SIZE / 2);
                 if w.is_open && !w.is_minimized && top_idx == win_id {
-                    // Janela em foco ativo: traço ciano luminescente
-                    fill_rounded_rect(buf, screen_w, screen_h, dot_x, dot_y, 20, 2, 1, COLOR_CYAN_NEON);
+                    // Janela em foco ativo: cápsula ciano luminescente com halo
+                    let dot_x = center_x.saturating_sub(9);
+                    fill_rounded_rect(buf, screen_w, screen_h, dot_x, dot_y, 18, 3, 1, COLOR_CYAN_NEON);
+                    fill_rounded_rect(buf, screen_w, screen_h, dot_x + 2, dot_y + 1, 14, 1, 0, COLOR_WHITE);
                 } else if w.is_open && !w.is_minimized {
-                    // Janela em segundo plano: ponto esmeralda
-                    fill_rounded_rect(buf, screen_w, screen_h, dot_x + 6, dot_y, 8, 2, 1, COLOR_EMERALD);
+                    // Janela em segundo plano: dot circular esmeralda de 4px
+                    let dot_x = center_x.saturating_sub(3);
+                    fill_rounded_rect(buf, screen_w, screen_h, dot_x, dot_y, 6, 3, 1, 0x0010_B981);
                 } else if w.is_minimized {
-                    // Minimizada: ponto âmbar
-                    fill_rounded_rect(buf, screen_w, screen_h, dot_x + 6, dot_y, 8, 2, 1, COLOR_AMBER);
+                    // Janela minimizada: dot circular âmbar de 4px
+                    let dot_x = center_x.saturating_sub(3);
+                    fill_rounded_rect(buf, screen_w, screen_h, dot_x, dot_y, 6, 3, 1, 0x00F5_9E0B);
                 }
             }
         }
@@ -219,13 +223,13 @@ pub fn render_dock(
 
     // 8. Tooltip flutuante superior ao pairar sobre qualquer ícone
     if let Some((tip_text, sx)) = hovered_tip {
-        let tip_w = tip_text.len() * FONT_WIDTH + 16;
+        let tip_w = text_width(tip_text) + 16;
         let tip_x = (sx + DOCK_ICON_SIZE / 2).saturating_sub(tip_w / 2).max(10);
-        let tip_y = dock_y.saturating_sub(24);
+        let tip_y = dock_y.saturating_sub(26);
 
-        draw_drop_shadow_rounded(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, 5, 2, COLOR_SHADOW);
-        fill_rounded_rect(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, 5, COLOR_SURFACE_L0);
-        draw_rounded_outline(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 20, 5, COLOR_CYAN_NEON);
-        draw_string(buf, screen_w, screen_h, tip_text, tip_x + 8, tip_y + 4, COLOR_TEXT_PRI, Some(COLOR_SURFACE_L0));
+        draw_drop_shadow_rounded(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 22, 6, 4, COLOR_SHADOW);
+        fill_rounded_rect(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 22, 6, COLOR_SURFACE_L0);
+        draw_rounded_outline(buf, screen_w, screen_h, tip_x, tip_y, tip_w, 22, 6, COLOR_CYAN_NEON);
+        draw_string_antialiased(buf, screen_w, screen_h, tip_text, tip_x + 8, tip_y + 5, COLOR_TEXT_PRI, Some(COLOR_SURFACE_L0));
     }
 }

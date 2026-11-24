@@ -15,11 +15,11 @@ pub const ITEMS_PER_PAGE: usize = 8;
 pub const MAX_PATH_BUF: usize = 64;
 
 // Dimensões Canônicas Unificadas dos Diálogos Modais do File Manager
-pub const DIALOG_W: usize = 340;
-pub const DIALOG_H_NORMAL: usize = 120;
-pub const DIALOG_H_PREVIEW: usize = 180;
-pub const DIALOG_BTN_W: usize = 140;
-pub const DIALOG_BTN_H: usize = 22;
+pub const DIALOG_W: usize = 360;
+pub const DIALOG_H_NORMAL: usize = 148;
+pub const DIALOG_H_PREVIEW: usize = 210;
+pub const DIALOG_BTN_W: usize = 148;
+pub const DIALOG_BTN_H: usize = 32;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FileDialogKind {
@@ -748,50 +748,50 @@ impl FileManagerApp {
             return true;
         }
 
-        // 1. Breadcrumb / Voltar (wy + 28 a wy + 48)
+        // 1. Breadcrumb / Voltar (wy + 28 a wy + 52)
         let bc_y = wy + 28;
-        if my >= bc_y && my <= bc_y + 20 {
+        if my >= bc_y && my <= bc_y + 24 {
             // Botão [< Voltar]
-            if mx >= wx + 12 && mx <= wx + 80 {
+            if mx >= wx + 12 && mx <= wx + 88 {
                 self.navigate_up(vfs);
                 return true;
             }
         }
 
-        // 2. Toolbar de Operações (wy + 52 a wy + 72)
-        let tb_y = wy + 52;
-        if my >= tb_y && my <= tb_y + 20 {
+        // 2. Toolbar de Operações (wy + 56 a wy + 94, altura 36px com botões de 32px)
+        let tb_y = wy + 56;
+        if my >= tb_y + 2 && my <= tb_y + 34 {
             let mut bx = wx + 12;
 
             // [+ Pasta]
-            if mx >= bx && mx <= bx + 70 {
+            if mx >= bx && mx <= bx + 76 {
                 self.dialog_kind = FileDialogKind::NewFolder;
                 let default_name = b"PASTA";
                 self.input_buffer[..default_name.len()].copy_from_slice(default_name);
                 self.input_len = default_name.len();
                 return true;
             }
-            bx += 76;
+            bx += 82;
 
             // [+ Arquivo]
-            if mx >= bx && mx <= bx + 80 {
+            if mx >= bx && mx <= bx + 86 {
                 self.dialog_kind = FileDialogKind::NewFile;
                 let default_name = b"NOVO.TXT";
                 self.input_buffer[..default_name.len()].copy_from_slice(default_name);
                 self.input_len = default_name.len();
                 return true;
             }
-            bx += 86;
+            bx += 92;
 
             // [Copiar]
-            if mx >= bx && mx <= bx + 64 {
+            if mx >= bx && mx <= bx + 70 {
                 let _ = self.copy_selected(vfs);
                 return true;
             }
-            bx += 70;
+            bx += 76;
 
             // [Renomear]
-            if mx >= bx && mx <= bx + 76 {
+            if mx >= bx && mx <= bx + 82 {
                 if let Some(idx) = self.selected_index {
                     if idx < self.file_cache_count {
                         self.dialog_kind = FileDialogKind::Rename;
@@ -804,10 +804,10 @@ impl FileManagerApp {
                 }
                 return true;
             }
-            bx += 82;
+            bx += 88;
 
             // [Excluir]
-            if mx >= bx && mx <= bx + 68 {
+            if mx >= bx && mx <= bx + 74 {
                 if self.selected_index.is_some() {
                     self.dialog_kind = FileDialogKind::ConfirmDelete;
                 } else {
@@ -815,18 +815,18 @@ impl FileManagerApp {
                 }
                 return true;
             }
-            bx += 74;
+            bx += 80;
 
             // [Atualizar]
-            if mx >= bx && mx <= bx + 74 {
+            if mx >= bx && mx <= bx + 80 {
                 self.refresh_cache(vfs);
                 self.set_status("Listagem de arquivos atualizada", false);
                 return true;
             }
-            bx += 80;
+            bx += 86;
 
             // [Info]
-            if mx >= bx && mx <= bx + 50 {
+            if mx >= bx && mx <= bx + 56 {
                 if self.selected_index.is_some() {
                     self.dialog_kind = FileDialogKind::Properties;
                 } else {
@@ -836,43 +836,43 @@ impl FileManagerApp {
             }
         }
 
-        // 3. Barra Lateral de Volumes (wx + 10 a wx + 124, wy + 78 a wy + wh - 36)
-        let sb_x = wx + 10;
-        let sb_w = 114;
-        let main_y = wy + 78;
+        // 3. Barra Lateral de Volumes (wx + 8 a wx + 128, wy + 98 a wy + wh - 40)
+        let sb_x = wx + 8;
+        let sb_w = 120;
+        let main_y = wy + 98;
 
         if mx >= sb_x && mx <= sb_x + sb_w && my >= main_y {
-            // Item 0: /disk
-            let item0_y = main_y + 24;
-            if my >= item0_y && my <= item0_y + 22 {
+            // Item 0: /disk (altura 32px)
+            let item0_y = main_y + 26;
+            if my >= item0_y && my <= item0_y + 32 {
                 self.select_volume(0, vfs);
                 return true;
             }
 
-            // Item 1: /ext2
-            let item1_y = item0_y + 26;
-            if my >= item1_y && my <= item1_y + 22 {
+            // Item 1: /ext2 (altura 32px)
+            let item1_y = item0_y + 38;
+            if my >= item1_y && my <= item1_y + 32 {
                 self.select_volume(1, vfs);
                 return true;
             }
         }
 
-        // 4. Área de Listagem de Arquivos (wx + 130 a wx + ww - 10)
-        let list_x = wx + 130;
-        let list_w = ww.saturating_sub(140);
-        let main_h = wh.saturating_sub(116);
-        let pag_y = main_y + main_h.saturating_sub(22);
+        // 4. Área de Listagem de Arquivos (wx + 136 a wx + ww - 10)
+        let list_x = wx + 136;
+        let list_w = ww.saturating_sub(146);
+        let main_h = wh.saturating_sub(138);
+        let pag_y = main_y + main_h.saturating_sub(26);
 
         // Cliques na Barra de Paginação Dinâmica
-        if my >= pag_y && my <= pag_y + 20 && mx >= list_x && mx <= list_x + list_w {
-            let btn_w = 54;
+        if my >= pag_y && my <= pag_y + 24 && mx >= list_x && mx <= list_x + list_w {
+            let btn_w = 64;
             // Botão [< Ant]
-            if mx >= list_x + 4 && mx <= list_x + 4 + btn_w {
+            if mx >= list_x + 6 && mx <= list_x + 6 + btn_w {
                 self.prev_page();
                 return true;
             }
             // Botão [Prox >]
-            let next_x = list_x + list_w.saturating_sub(btn_w + 4);
+            let next_x = list_x + list_w.saturating_sub(btn_w + 6);
             if mx >= next_x && mx <= next_x + btn_w {
                 self.next_page();
                 return true;
@@ -880,16 +880,16 @@ impl FileManagerApp {
         }
 
         if mx >= list_x && mx <= list_x + list_w && my >= main_y && my < pag_y {
-            let row_h = 20;
+            let row_h = 24;
+            let row_step = 28;
             let start_idx = self.current_page * ITEMS_PER_PAGE;
             let page_count = self.file_cache_count.saturating_sub(start_idx).min(ITEMS_PER_PAGE);
 
             for r in 0..page_count {
                 let i = start_idx + r;
-                let row_y = main_y + 4 + (r * row_h);
+                let row_y = main_y + 8 + (r * row_step);
                 if my >= row_y && my <= row_y + row_h {
                     if self.selected_index == Some(i) {
-                        // Segundo clique na mesma entrada: Executa ação (Navega se pasta, Preview se txt, Spawn se ELF)
                         let entry = self.file_cache[i];
                         let name_str = entry.name_str();
                         if entry.is_dir {
@@ -913,7 +913,7 @@ impl FileManagerApp {
                         let is_dir = self.file_cache[i].is_dir;
                         self.selected_index = Some(i);
                         if is_dir {
-                            self.set_status("Diretorio selecionado", false);
+                            self.set_status("Diretório selecionado", false);
                         } else {
                             self.set_status("Arquivo selecionado", false);
                         }
@@ -940,27 +940,27 @@ impl FileManagerApp {
         // Fundo da janela do gerenciador de arquivos
         fill_rect(buf, screen_w, screen_h, wx, wy, ww, wh, COLOR_CARD);
 
-        // 1. Barra de Navegação e Breadcrumb (wy + 28 a wy + 50)
+        // 1. Barra de Navegação e Breadcrumb (wy + 28 a wy + 54)
         let bc_y = wy + 28;
-        fill_rect(buf, screen_w, screen_h, wx + 8, bc_y, ww - 16, 22, 0x000F_172A);
-        draw_rect_outline(buf, screen_w, screen_h, wx + 8, bc_y, ww - 16, 22, COLOR_BORDER_SUBTLE);
+        fill_rounded_rect(buf, screen_w, screen_h, wx + 8, bc_y, ww - 16, 26, 6, 0x000F_172A);
+        draw_rounded_outline(buf, screen_w, screen_h, wx + 8, bc_y, ww - 16, 26, 6, COLOR_BORDER_SUBTLE);
 
         // Botão [< Voltar]
-        let btn_back_w = 64;
+        let btn_back_w = 76;
         let is_at_root = self.current_path_str() == "/disk" || self.current_path_str() == "/ext2";
         let back_bg = if is_at_root { 0x001E_293B } else { 0x0025_63EB };
         let back_fg = if is_at_root { COLOR_TEXT_MUTED } else { COLOR_WHITE };
-        fill_rect(buf, screen_w, screen_h, wx + 10, bc_y + 2, btn_back_w, 18, back_bg);
-        draw_string(buf, screen_w, screen_h, "< Voltar", wx + 14, bc_y + 4, back_fg, Some(back_bg));
+        fill_rounded_rect(buf, screen_w, screen_h, wx + 10, bc_y + 2, btn_back_w, 22, 4, back_bg);
+        draw_string_antialiased(buf, screen_w, screen_h, "< Voltar", wx + 16, bc_y + 6, back_fg, Some(back_bg));
 
         // Breadcrumb
-        draw_string(buf, screen_w, screen_h, "Local:", wx + 82, bc_y + 4, COLOR_CYAN, Some(0x000F_172A));
-        draw_string(buf, screen_w, screen_h, self.current_path_str(), wx + 128, bc_y + 4, COLOR_TEXT_PRI, Some(0x000F_172A));
+        draw_string_antialiased(buf, screen_w, screen_h, "Local:", wx + 96, bc_y + 6, COLOR_CYAN, Some(0x000F_172A));
+        draw_string_antialiased(buf, screen_w, screen_h, self.current_path_str(), wx + 146, bc_y + 6, COLOR_TEXT_PRI, Some(0x000F_172A));
 
-        // 2. Barra de Ferramentas / Toolbar (wy + 52 a wy + 74)
-        let tb_y = wy + 52;
-        fill_rect(buf, screen_w, screen_h, wx + 8, tb_y, ww - 16, 22, COLOR_CARD_ALT);
-        draw_rect_outline(buf, screen_w, screen_h, wx + 8, tb_y, ww - 16, 22, COLOR_BORDER);
+        // 2. Barra de Ferramentas / Toolbar com Botões Arredondados de 32px (wy + 58 a wy + 94)
+        let tb_y = wy + 58;
+        fill_rounded_rect(buf, screen_w, screen_h, wx + 8, tb_y, ww - 16, 36, 8, COLOR_CARD_ALT);
+        draw_rounded_outline(buf, screen_w, screen_h, wx + 8, tb_y, ww - 16, 36, 8, COLOR_BORDER);
 
         let mut bx = wx + 12;
         let is_ro = self.is_read_only();
@@ -969,103 +969,104 @@ impl FileManagerApp {
         let bg_f = if is_ro { COLOR_CARD } else { 0x001E_293B };
         let bd_f = if is_ro { COLOR_BORDER } else { COLOR_EMERALD };
         let fg_f = if is_ro { COLOR_TEXT_MUTED } else { COLOR_EMERALD };
-        fill_rect(buf, screen_w, screen_h, bx, tb_y + 2, 70, 18, bg_f);
-        draw_rect_outline(buf, screen_w, screen_h, bx, tb_y + 2, 70, 18, bd_f);
-        draw_string(buf, screen_w, screen_h, "+ Pasta", bx + 6, tb_y + 4, fg_f, Some(bg_f));
-        bx += 76;
+        fill_rounded_rect(buf, screen_w, screen_h, bx, tb_y + 2, 76, 32, 8, bg_f);
+        draw_rounded_outline(buf, screen_w, screen_h, bx, tb_y + 2, 76, 32, 8, bd_f);
+        draw_string_antialiased(buf, screen_w, screen_h, "+ Pasta", bx + 10, tb_y + 10, fg_f, Some(bg_f));
+        bx += 82;
 
         // Botão [+ Arquivo]
-        fill_rect(buf, screen_w, screen_h, bx, tb_y + 2, 80, 18, bg_f);
-        draw_rect_outline(buf, screen_w, screen_h, bx, tb_y + 2, 80, 18, bd_f);
-        draw_string(buf, screen_w, screen_h, "+ Arquivo", bx + 5, tb_y + 4, fg_f, Some(bg_f));
-        bx += 86;
+        fill_rounded_rect(buf, screen_w, screen_h, bx, tb_y + 2, 86, 32, 8, bg_f);
+        draw_rounded_outline(buf, screen_w, screen_h, bx, tb_y + 2, 86, 32, 8, bd_f);
+        draw_string_antialiased(buf, screen_w, screen_h, "+ Arquivo", bx + 8, tb_y + 10, fg_f, Some(bg_f));
+        bx += 92;
 
         // Botão [Copiar]
         let has_sel = self.selected_index.is_some();
         let bg_c = if has_sel && !is_ro { 0x001E_293B } else { COLOR_CARD };
         let fg_c = if has_sel && !is_ro { COLOR_CYAN } else { COLOR_TEXT_MUTED };
-        fill_rect(buf, screen_w, screen_h, bx, tb_y + 2, 64, 18, bg_c);
-        draw_rect_outline(buf, screen_w, screen_h, bx, tb_y + 2, 64, 18, COLOR_BORDER);
-        draw_string(buf, screen_w, screen_h, "Copiar", bx + 8, tb_y + 4, fg_c, Some(bg_c));
-        bx += 70;
+        fill_rounded_rect(buf, screen_w, screen_h, bx, tb_y + 2, 70, 32, 8, bg_c);
+        draw_rounded_outline(buf, screen_w, screen_h, bx, tb_y + 2, 70, 32, 8, COLOR_BORDER);
+        draw_string_antialiased(buf, screen_w, screen_h, "Copiar", bx + 12, tb_y + 10, fg_c, Some(bg_c));
+        bx += 76;
 
         // Botão [Renomear]
         let fg_r = if has_sel && !is_ro { COLOR_AMBER } else { COLOR_TEXT_MUTED };
-        fill_rect(buf, screen_w, screen_h, bx, tb_y + 2, 76, 18, bg_c);
-        draw_rect_outline(buf, screen_w, screen_h, bx, tb_y + 2, 76, 18, COLOR_BORDER);
-        draw_string(buf, screen_w, screen_h, "Renomear", bx + 6, tb_y + 4, fg_r, Some(bg_c));
-        bx += 82;
+        fill_rounded_rect(buf, screen_w, screen_h, bx, tb_y + 2, 82, 32, 8, bg_c);
+        draw_rounded_outline(buf, screen_w, screen_h, bx, tb_y + 2, 82, 32, 8, COLOR_BORDER);
+        draw_string_antialiased(buf, screen_w, screen_h, "Renomear", bx + 8, tb_y + 10, fg_r, Some(bg_c));
+        bx += 88;
 
         // Botão [Excluir]
         let fg_d = if has_sel && !is_ro { COLOR_RUBY } else { COLOR_TEXT_MUTED };
-        fill_rect(buf, screen_w, screen_h, bx, tb_y + 2, 68, 18, bg_c);
-        draw_rect_outline(buf, screen_w, screen_h, bx, tb_y + 2, 68, 18, COLOR_BORDER);
-        draw_string(buf, screen_w, screen_h, "Excluir", bx + 8, tb_y + 4, fg_d, Some(bg_c));
-        bx += 74;
+        fill_rounded_rect(buf, screen_w, screen_h, bx, tb_y + 2, 74, 32, 8, bg_c);
+        draw_rounded_outline(buf, screen_w, screen_h, bx, tb_y + 2, 74, 32, 8, COLOR_BORDER);
+        draw_string_antialiased(buf, screen_w, screen_h, "Excluir", bx + 10, tb_y + 10, fg_d, Some(bg_c));
+        bx += 80;
 
         // Botão [Atualizar]
-        fill_rect(buf, screen_w, screen_h, bx, tb_y + 2, 74, 18, 0x001E_293B);
-        draw_rect_outline(buf, screen_w, screen_h, bx, tb_y + 2, 74, 18, COLOR_BORDER);
-        draw_string(buf, screen_w, screen_h, "Atualizar", bx + 6, tb_y + 4, COLOR_TEXT_PRI, Some(0x001E_293B));
-        bx += 80;
+        fill_rounded_rect(buf, screen_w, screen_h, bx, tb_y + 2, 80, 32, 8, 0x001E_293B);
+        draw_rounded_outline(buf, screen_w, screen_h, bx, tb_y + 2, 80, 32, 8, COLOR_BORDER);
+        draw_string_antialiased(buf, screen_w, screen_h, "Atualizar", bx + 8, tb_y + 10, COLOR_TEXT_PRI, Some(0x001E_293B));
+        bx += 86;
 
         // Botão [Info] (Propriedades do item selecionado)
         let fg_i = if has_sel { COLOR_CYAN } else { COLOR_TEXT_MUTED };
-        fill_rect(buf, screen_w, screen_h, bx, tb_y + 2, 50, 18, bg_c);
-        draw_rect_outline(buf, screen_w, screen_h, bx, tb_y + 2, 50, 18, COLOR_BORDER);
-        draw_string(buf, screen_w, screen_h, "Info", bx + 12, tb_y + 4, fg_i, Some(bg_c));
+        fill_rounded_rect(buf, screen_w, screen_h, bx, tb_y + 2, 56, 32, 8, bg_c);
+        draw_rounded_outline(buf, screen_w, screen_h, bx, tb_y + 2, 56, 32, 8, COLOR_BORDER);
+        draw_string_antialiased(buf, screen_w, screen_h, "Info", bx + 12, tb_y + 10, fg_i, Some(bg_c));
 
-        // 3. Barra Lateral de Volumes e Locais (wx + 8 a wx + 124)
-        let main_y = wy + 76;
-        let main_h = wh.saturating_sub(112);
+        // 3. Barra Lateral de Volumes e Locais (wy + 98 a wy + wh - 40)
+        let main_y = wy + 98;
+        let main_h = wh.saturating_sub(138);
         let sb_x = wx + 8;
-        let sb_w = 116;
+        let sb_w = 120;
 
-        fill_rect(buf, screen_w, screen_h, sb_x, main_y, sb_w, main_h, COLOR_SURFACE_L1);
-        draw_rect_outline(buf, screen_w, screen_h, sb_x, main_y, sb_w, main_h, COLOR_BORDER);
-        draw_string(buf, screen_w, screen_h, "VOLUMES", sb_x + 8, main_y + 6, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
+        fill_rounded_rect(buf, screen_w, screen_h, sb_x, main_y, sb_w, main_h, 8, COLOR_SURFACE_L1);
+        draw_rounded_outline(buf, screen_w, screen_h, sb_x, main_y, sb_w, main_h, 8, COLOR_BORDER);
+        draw_string_antialiased(buf, screen_w, screen_h, "VOLUMES", sb_x + 14, main_y + 10, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
 
-        // Item Volume 0: /disk
+        // Item Volume 0: /disk (Botão arredondado de 32px)
         let is_v0 = self.active_volume == 0;
         let bg_v0 = if is_v0 { 0x001E_293B } else { COLOR_SURFACE_L1 };
         let bd_v0 = if is_v0 { COLOR_CYAN } else { COLOR_BORDER_SUBTLE };
         let fg_v0 = if is_v0 { COLOR_CYAN } else { COLOR_TEXT_PRI };
-        fill_rect(buf, screen_w, screen_h, sb_x + 4, main_y + 24, sb_w - 8, 22, bg_v0);
-        draw_rect_outline(buf, screen_w, screen_h, sb_x + 4, main_y + 24, sb_w - 8, 22, bd_v0);
-        draw_string(buf, screen_w, screen_h, "/disk (RW)", sb_x + 8, main_y + 28, fg_v0, Some(bg_v0));
+        fill_rounded_rect(buf, screen_w, screen_h, sb_x + 6, main_y + 26, sb_w - 12, 32, 8, bg_v0);
+        draw_rounded_outline(buf, screen_w, screen_h, sb_x + 6, main_y + 26, sb_w - 12, 32, 8, bd_v0);
+        draw_string_antialiased(buf, screen_w, screen_h, "/disk (RW)", sb_x + 14, main_y + 36, fg_v0, Some(bg_v0));
 
-        // Item Volume 1: /ext2
+        // Item Volume 1: /ext2 (Botão arredondado de 32px)
         let is_v1 = self.active_volume == 1;
         let bg_v1 = if is_v1 { 0x001E_293B } else { COLOR_SURFACE_L1 };
         let bd_v1 = if is_v1 { COLOR_CYAN } else { COLOR_BORDER_SUBTLE };
         let fg_v1 = if is_v1 { COLOR_CYAN } else { COLOR_TEXT_PRI };
-        fill_rect(buf, screen_w, screen_h, sb_x + 4, main_y + 50, sb_w - 8, 22, bg_v1);
-        draw_rect_outline(buf, screen_w, screen_h, sb_x + 4, main_y + 50, sb_w - 8, 22, bd_v1);
-        draw_string(buf, screen_w, screen_h, "/ext2 (RO)", sb_x + 8, main_y + 54, fg_v1, Some(bg_v1));
+        fill_rounded_rect(buf, screen_w, screen_h, sb_x + 6, main_y + 64, sb_w - 12, 32, 8, bg_v1);
+        draw_rounded_outline(buf, screen_w, screen_h, sb_x + 6, main_y + 64, sb_w - 12, 32, 8, bd_v1);
+        draw_string_antialiased(buf, screen_w, screen_h, "/ext2 (RO)", sb_x + 14, main_y + 74, fg_v1, Some(bg_v1));
 
-        // 4. Área Principal de Listagem de Arquivos (wx + 128 a wx + ww - 8)
-        let list_x = wx + 128;
-        let list_w = ww.saturating_sub(136);
-        fill_rect(buf, screen_w, screen_h, list_x, main_y, list_w, main_h, COLOR_CARD_ALT);
-        draw_rect_outline(buf, screen_w, screen_h, list_x, main_y, list_w, main_h, COLOR_BORDER);
+        // 4. Área Principal de Listagem de Arquivos com Respiro Visual (wx + 136 a wx + ww - 8)
+        let list_x = wx + 136;
+        let list_w = ww.saturating_sub(144);
+        fill_rounded_rect(buf, screen_w, screen_h, list_x, main_y, list_w, main_h, 8, COLOR_CARD_ALT);
+        draw_rounded_outline(buf, screen_w, screen_h, list_x, main_y, list_w, main_h, 8, COLOR_BORDER);
 
         if self.file_cache_count == 0 {
-            draw_string(buf, screen_w, screen_h, "(Diretorio vazio)", list_x + 20, main_y + 30, COLOR_TEXT_MUTED, Some(COLOR_CARD_ALT));
+            draw_string_antialiased(buf, screen_w, screen_h, "(Diretório vazio)", list_x + 24, main_y + 36, COLOR_TEXT_MUTED, Some(COLOR_CARD_ALT));
         } else {
-            let row_h = 20;
+            let row_h = 24;
+            let row_step = 28;
             let start_idx = self.current_page * ITEMS_PER_PAGE;
             let page_count = self.file_cache_count.saturating_sub(start_idx).min(ITEMS_PER_PAGE);
 
             for r in 0..page_count {
                 let i = start_idx + r;
                 let entry = &self.file_cache[i];
-                let row_y = main_y + 4 + (r * row_h);
+                let row_y = main_y + 8 + (r * row_step);
                 let is_sel = self.selected_index == Some(i);
 
                 let r_bg = if is_sel { 0x001E_293B } else { COLOR_CARD_ALT };
-                fill_rect(buf, screen_w, screen_h, list_x + 2, row_y, list_w - 4, row_h - 2, r_bg);
+                fill_rounded_rect(buf, screen_w, screen_h, list_x + 6, row_y, list_w - 12, row_h, 6, r_bg);
                 if is_sel {
-                    draw_rect_outline(buf, screen_w, screen_h, list_x + 2, row_y, list_w - 4, row_h - 2, COLOR_BORDER_ACT);
+                    draw_rounded_outline(buf, screen_w, screen_h, list_x + 6, row_y, list_w - 12, row_h, 6, COLOR_BORDER_ACT);
                 }
 
                 let (tag, tag_fg) = if entry.is_dir {
@@ -1078,36 +1079,36 @@ impl FileManagerApp {
                     ("[ARQ] ", COLOR_TEXT_MUTED)
                 };
 
-                draw_string(buf, screen_w, screen_h, tag, list_x + 6, row_y + 2, tag_fg, Some(r_bg));
-                draw_string(buf, screen_w, screen_h, entry.name_str(), list_x + 50, row_y + 2, COLOR_TEXT_PRI, Some(r_bg));
+                draw_string_antialiased(buf, screen_w, screen_h, tag, list_x + 12, row_y + 5, tag_fg, Some(r_bg));
+                draw_string_antialiased(buf, screen_w, screen_h, entry.name_str(), list_x + 64, row_y + 5, COLOR_TEXT_PRI, Some(r_bg));
 
-                // Ação rápida à direita
-                let act_x = list_x + list_w - 60;
+                // Ação rápida à direita com badge arredondado
+                let act_x = list_x + list_w - 74;
                 if entry.is_dir {
-                    draw_string(buf, screen_w, screen_h, "Abrir >", act_x, row_y + 2, COLOR_EMERALD, Some(r_bg));
+                    draw_string_antialiased(buf, screen_w, screen_h, "Abrir >", act_x, row_y + 5, COLOR_EMERALD, Some(r_bg));
                 } else if entry.is_elf {
-                    draw_string(buf, screen_w, screen_h, "> Rodar", act_x, row_y + 2, COLOR_WHITE, Some(r_bg));
+                    draw_string_antialiased(buf, screen_w, screen_h, "> Rodar", act_x, row_y + 5, COLOR_WHITE, Some(r_bg));
                 } else if entry.is_txt {
-                    draw_string(buf, screen_w, screen_h, "Ver VFS", act_x, row_y + 2, COLOR_CYAN, Some(r_bg));
+                    draw_string_antialiased(buf, screen_w, screen_h, "Ver VFS", act_x, row_y + 5, COLOR_CYAN, Some(r_bg));
                 }
             }
         }
 
         // Rodapé de Paginação Dinâmica na Área de Listagem
-        let pag_y = main_y + main_h.saturating_sub(22);
-        fill_rect(buf, screen_w, screen_h, list_x + 1, pag_y, list_w - 2, 21, 0x000F_172A);
-        draw_rect_outline(buf, screen_w, screen_h, list_x + 1, pag_y, list_w - 2, 21, COLOR_BORDER_SUBTLE);
+        let pag_y = main_y + main_h.saturating_sub(26);
+        fill_rounded_rect(buf, screen_w, screen_h, list_x + 2, pag_y, list_w - 4, 24, 6, 0x000F_172A);
+        draw_rounded_outline(buf, screen_w, screen_h, list_x + 2, pag_y, list_w - 4, 24, 6, COLOR_BORDER_SUBTLE);
 
         let tot_pages = self.total_pages();
         let cur_p = self.current_page + 1;
-        let btn_w = 54;
+        let btn_w = 64;
 
         // [< Ant]
         let can_prev = self.current_page > 0;
         let prev_bg = if can_prev { 0x001E_293B } else { 0x000F_172A };
         let prev_fg = if can_prev { COLOR_CYAN } else { COLOR_TEXT_MUTED };
-        fill_rect(buf, screen_w, screen_h, list_x + 4, pag_y + 2, btn_w, 17, prev_bg);
-        draw_string(buf, screen_w, screen_h, "< Ant", list_x + 10, pag_y + 3, prev_fg, Some(prev_bg));
+        fill_rounded_rect(buf, screen_w, screen_h, list_x + 6, pag_y + 2, btn_w, 20, 4, prev_bg);
+        draw_string_antialiased(buf, screen_w, screen_h, "< Ant", list_x + 14, pag_y + 5, prev_fg, Some(prev_bg));
 
         // Texto Central: Pag X/Y (N itens)
         let mut pag_str = [0u8; 64];
@@ -1120,7 +1121,7 @@ impl FileManagerApp {
                 }
             }
         };
-        push_pag(b"Pag ");
+        push_pag(b"P\xc3\xa1g ");
         let mut nb = [0u8; 8];
         let nl = format_num(cur_p, &mut nb);
         push_pag(&nb[..nl]);
@@ -1133,22 +1134,22 @@ impl FileManagerApp {
         push_pag(b" itens)");
 
         if let Ok(s) = core::str::from_utf8(&pag_str[..plen]) {
-            let mid_x = list_x + (list_w.saturating_sub(plen * 8)) / 2;
-            draw_string(buf, screen_w, screen_h, s, mid_x, pag_y + 3, COLOR_TEXT_PRI, Some(0x000F_172A));
+            let mid_x = list_x + (list_w.saturating_sub(text_width(s))) / 2;
+            draw_string_antialiased(buf, screen_w, screen_h, s, mid_x, pag_y + 5, COLOR_TEXT_PRI, Some(0x000F_172A));
         }
 
         // [Prox >]
         let can_next = self.current_page + 1 < tot_pages;
         let next_bg = if can_next { 0x001E_293B } else { 0x000F_172A };
         let next_fg = if can_next { COLOR_CYAN } else { COLOR_TEXT_MUTED };
-        let next_x = list_x + list_w.saturating_sub(btn_w + 4);
-        fill_rect(buf, screen_w, screen_h, next_x, pag_y + 2, btn_w, 17, next_bg);
-        draw_string(buf, screen_w, screen_h, "Prox >", next_x + 6, pag_y + 3, next_fg, Some(next_bg));
+        let next_x = list_x + list_w.saturating_sub(btn_w + 6);
+        fill_rounded_rect(buf, screen_w, screen_h, next_x, pag_y + 2, btn_w, 20, 4, next_bg);
+        draw_string_antialiased(buf, screen_w, screen_h, "Próx >", next_x + 10, pag_y + 5, next_fg, Some(next_bg));
 
-        // 5. Barra Inferior de Status e Capacidade do Volume (wy + wh - 34 a wy + wh - 4)
-        let bar_y = wy + wh - 34;
-        fill_rect(buf, screen_w, screen_h, wx + 8, bar_y, ww - 16, 28, 0x000F_172A);
-        draw_rect_outline(buf, screen_w, screen_h, wx + 8, bar_y, ww - 16, 28, COLOR_BORDER);
+        // 5. Barra Inferior de Status e Capacidade do Volume (wy + wh - 36 a wy + wh - 4)
+        let bar_y = wy + wh - 36;
+        fill_rounded_rect(buf, screen_w, screen_h, wx + 8, bar_y, ww - 16, 32, 8, 0x000F_172A);
+        draw_rounded_outline(buf, screen_w, screen_h, wx + 8, bar_y, ww - 16, 32, 8, COLOR_BORDER);
 
         // Linha 1: Capacidade do Volume ativo via StorageHost
         // IMP-01: Desacopla statvfs síncrono do render loop gráfico através de cache em memória
@@ -1191,13 +1192,13 @@ impl FileManagerApp {
             push_info(mode_str.as_bytes());
 
             if let Ok(istr) = core::str::from_utf8(&info_buf[..ilen]) {
-                draw_string(buf, screen_w, screen_h, istr, wx + 14, bar_y + 3, COLOR_TEXT_MUTED, Some(0x000F_172A));
+                draw_string_antialiased(buf, screen_w, screen_h, istr, wx + 16, bar_y + 4, COLOR_TEXT_MUTED, Some(0x000F_172A));
             }
         }
 
         // Linha 2: Mensagem de Status da Operação
         let status_color = if self.status_is_error { COLOR_RUBY } else { COLOR_EMERALD };
-        draw_string(buf, screen_w, screen_h, self.status_str(), wx + 14, bar_y + 16, status_color, Some(0x000F_172A));
+        draw_string_antialiased(buf, screen_w, screen_h, self.status_str(), wx + 16, bar_y + 18, status_color, Some(0x000F_172A));
 
         // 6. Renderização de Diálogos Modais (se ativos)
         if self.dialog_kind != FileDialogKind::None {
@@ -1218,21 +1219,21 @@ impl FileManagerApp {
         let dw = DIALOG_W;
         let dh = match self.dialog_kind {
             FileDialogKind::Preview => DIALOG_H_PREVIEW,
-            FileDialogKind::EditFile => 210,
+            FileDialogKind::EditFile => 220,
             _ => DIALOG_H_NORMAL,
         };
         let dx = wx + (ww.saturating_sub(dw)) / 2;
         let dy = wy + (wh.saturating_sub(dh)) / 2;
 
-        // Sombra de elevação e fundo do diálogo arredondado (R=6)
-        draw_drop_shadow_rounded(buf, screen_w, screen_h, dx, dy, dw, dh, 6, 4, COLOR_SHADOW);
-        fill_rounded_rect(buf, screen_w, screen_h, dx, dy, dw, dh, 6, 0x000F_172A);
-        draw_rounded_outline(buf, screen_w, screen_h, dx, dy, dw, dh, 6, COLOR_BORDER_ACT);
+        // Sombra de elevação e fundo do diálogo arredondado (R=10)
+        draw_drop_shadow_rounded(buf, screen_w, screen_h, dx, dy, dw, dh, 10, 8, COLOR_SHADOW);
+        fill_rounded_rect(buf, screen_w, screen_h, dx, dy, dw, dh, 10, 0x000F_172A);
+        draw_rounded_outline(buf, screen_w, screen_h, dx, dy, dw, dh, 10, COLOR_BORDER_ACT);
 
         // Barra superior do diálogo
-        fill_rounded_top(buf, screen_w, screen_h, dx + 1, dy + 1, dw - 2, 22, 5, 0x001E_293B);
+        fill_rounded_top(buf, screen_w, screen_h, dx + 1, dy + 1, dw - 2, 28, 9, 0x001E_293B);
         let title = match self.dialog_kind {
-            FileDialogKind::ConfirmDelete => "Confirmar Exclusao",
+            FileDialogKind::ConfirmDelete => "Confirmar Exclusão",
             FileDialogKind::NewFolder => "Criar Nova Pasta",
             FileDialogKind::NewFile => "Criar Novo Arquivo",
             FileDialogKind::Rename => "Renomear Item",
@@ -1241,15 +1242,15 @@ impl FileManagerApp {
             FileDialogKind::Properties => "Propriedades do Item",
             FileDialogKind::None => "",
         };
-        draw_string(buf, screen_w, screen_h, title, dx + 8, dy + 4, COLOR_CYAN, Some(0x001E_293B));
+        draw_string_antialiased(buf, screen_w, screen_h, title, dx + 12, dy + 8, COLOR_CYAN, Some(0x001E_293B));
 
         // Botão X de fechar
-        draw_string(buf, screen_w, screen_h, "[X]", dx + dw - 24, dy + 4, COLOR_RUBY, Some(0x001E_293B));
+        draw_string_antialiased(buf, screen_w, screen_h, "[X]", dx + dw - 28, dy + 8, COLOR_RUBY, Some(0x001E_293B));
 
-        let btn_y = dy + dh - 28;
+        let btn_y = dy + dh - 42;
         let b0_x = dx + 16;
         let b0_w = DIALOG_BTN_W;
-        let b1_x = dx + dw - 156;
+        let b1_x = dx + dw - 164;
         let b1_w = DIALOG_BTN_W;
 
         match self.dialog_kind {
@@ -1258,18 +1259,18 @@ impl FileManagerApp {
                     if i < self.file_cache_count { self.file_cache[i].name_str() } else { "item" }
                 } else { "item" };
 
-                draw_string(buf, screen_w, screen_h, "Excluir permanentemente este item?", dx + 16, dy + 36, COLOR_TEXT_PRI, Some(0x000F_172A));
-                draw_string(buf, screen_w, screen_h, name, dx + 16, dy + 56, COLOR_RUBY, Some(0x000F_172A));
+                draw_string_antialiased(buf, screen_w, screen_h, "Excluir permanentemente este item?", dx + 16, dy + 42, COLOR_TEXT_PRI, Some(0x000F_172A));
+                draw_string_antialiased(buf, screen_w, screen_h, name, dx + 16, dy + 64, COLOR_RUBY, Some(0x000F_172A));
 
-                // [ Sim, Excluir ]
-                fill_rounded_rect(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, 4, 0x002D_1215);
-                draw_rounded_outline(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, 4, COLOR_RUBY);
-                draw_string(buf, screen_w, screen_h, "Sim, Excluir", b0_x + 24, btn_y + 3, COLOR_RUBY, Some(0x002D_1215));
+                // [ Sim, Excluir ] (Botão 32px, radius 8px)
+                fill_rounded_rect(buf, screen_w, screen_h, b0_x, btn_y, b0_w, DIALOG_BTN_H, 8, 0x002D_1215);
+                draw_rounded_outline(buf, screen_w, screen_h, b0_x, btn_y, b0_w, DIALOG_BTN_H, 8, COLOR_RUBY);
+                draw_string_antialiased(buf, screen_w, screen_h, "Sim, Excluir", b0_x + 26, btn_y + 10, COLOR_RUBY, Some(0x002D_1215));
 
-                // [ Cancelar ]
-                fill_rounded_rect(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, 4, 0x001E_293B);
-                draw_rounded_outline(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, 4, COLOR_BORDER);
-                draw_string(buf, screen_w, screen_h, "Cancelar", b1_x + 36, btn_y + 3, COLOR_TEXT_PRI, Some(0x001E_293B));
+                // [ Cancelar ] (Botão 32px, radius 8px)
+                fill_rounded_rect(buf, screen_w, screen_h, b1_x, btn_y, b1_w, DIALOG_BTN_H, 8, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, b1_x, btn_y, b1_w, DIALOG_BTN_H, 8, COLOR_BORDER);
+                draw_string_antialiased(buf, screen_w, screen_h, "Cancelar", b1_x + 40, btn_y + 10, COLOR_TEXT_PRI, Some(0x001E_293B));
             }
             FileDialogKind::NewFolder | FileDialogKind::NewFile | FileDialogKind::Rename => {
                 let prompt = match self.dialog_kind {
@@ -1278,44 +1279,44 @@ impl FileManagerApp {
                     FileDialogKind::Rename => "Novo nome:",
                     _ => "",
                 };
-                draw_string(buf, screen_w, screen_h, prompt, dx + 16, dy + 32, COLOR_TEXT_PRI, Some(0x000F_172A));
+                draw_string_antialiased(buf, screen_w, screen_h, prompt, dx + 16, dy + 38, COLOR_TEXT_PRI, Some(0x000F_172A));
 
                 // Campo de entrada de texto com cantos arredondados
                 let input_w = dw - 32;
-                fill_rounded_rect(buf, screen_w, screen_h, dx + 16, dy + 50, input_w, 22, 4, 0x001E_293B);
-                draw_rounded_outline(buf, screen_w, screen_h, dx + 16, dy + 50, input_w, 22, 4, COLOR_BORDER_ACT);
+                fill_rounded_rect(buf, screen_w, screen_h, dx + 16, dy + 58, input_w, 28, 6, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, dx + 16, dy + 58, input_w, 28, 6, COLOR_BORDER_ACT);
 
                 let typed = core::str::from_utf8(&self.input_buffer[..self.input_len]).unwrap_or("");
-                draw_string(buf, screen_w, screen_h, typed, dx + 22, dy + 54, COLOR_WHITE, Some(0x001E_293B));
+                draw_string_antialiased(buf, screen_w, screen_h, typed, dx + 24, dy + 64, COLOR_WHITE, Some(0x001E_293B));
 
-                // [ Confirmar ]
+                // [ Confirmar ] (Botão 32px, radius 8px)
                 let confirm_text = match self.dialog_kind {
                     FileDialogKind::NewFolder => "Criar Pasta",
                     FileDialogKind::NewFile => "Criar Arquivo",
                     FileDialogKind::Rename => "Renomear",
                     _ => "OK",
                 };
-                fill_rounded_rect(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, 4, 0x0025_63EB);
-                draw_rounded_outline(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, 4, COLOR_CYAN);
-                draw_string(buf, screen_w, screen_h, confirm_text, b0_x + 28, btn_y + 3, COLOR_WHITE, Some(0x0025_63EB));
+                fill_rounded_rect(buf, screen_w, screen_h, b0_x, btn_y, b0_w, DIALOG_BTN_H, 8, 0x0025_63EB);
+                draw_rounded_outline(buf, screen_w, screen_h, b0_x, btn_y, b0_w, DIALOG_BTN_H, 8, COLOR_CYAN);
+                draw_string_antialiased(buf, screen_w, screen_h, confirm_text, b0_x + 30, btn_y + 10, COLOR_WHITE, Some(0x0025_63EB));
 
-                // [ Cancelar ]
-                fill_rounded_rect(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, 4, 0x001E_293B);
-                draw_rounded_outline(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, 4, COLOR_BORDER);
-                draw_string(buf, screen_w, screen_h, "Cancelar", b1_x + 36, btn_y + 3, COLOR_TEXT_PRI, Some(0x001E_293B));
+                // [ Cancelar ] (Botão 32px, radius 8px)
+                fill_rounded_rect(buf, screen_w, screen_h, b1_x, btn_y, b1_w, DIALOG_BTN_H, 8, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, b1_x, btn_y, b1_w, DIALOG_BTN_H, 8, COLOR_BORDER);
+                draw_string_antialiased(buf, screen_w, screen_h, "Cancelar", b1_x + 40, btn_y + 10, COLOR_TEXT_PRI, Some(0x001E_293B));
             }
             FileDialogKind::Preview => {
                 let name = core::str::from_utf8(&self.preview_filename[..self.preview_filename_len]).unwrap_or("arquivo");
-                draw_string(buf, screen_w, screen_h, name, dx + 16, dy + 30, COLOR_CYAN, Some(0x000F_172A));
+                draw_string_antialiased(buf, screen_w, screen_h, name, dx + 16, dy + 36, COLOR_CYAN, Some(0x000F_172A));
 
                 // Caixa de texto com conteúdo lido
                 let tb_w = dw - 32;
-                let tb_h = 88;
-                fill_rounded_rect(buf, screen_w, screen_h, dx + 16, dy + 48, tb_w, tb_h, 4, 0x001E_293B);
-                draw_rounded_outline(buf, screen_w, screen_h, dx + 16, dy + 48, tb_w, tb_h, 4, COLOR_BORDER);
+                let tb_h = 96;
+                fill_rounded_rect(buf, screen_w, screen_h, dx + 16, dy + 56, tb_w, tb_h, 6, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, dx + 16, dy + 56, tb_w, tb_h, 6, COLOR_BORDER);
 
                 let c_len = self.preview_content_len.min(256);
-                let mut line_y = dy + 52;
+                let mut line_y = dy + 62;
                 let mut line_start = 0;
                 let mut rendered = 0;
                 for i in 0..c_len {
@@ -1325,7 +1326,7 @@ impl FileManagerApp {
                         let end_i = if b == b'\n' { i } else { i + 1 };
                         if end_i > line_start && rendered < 4 {
                             if let Ok(lstr) = core::str::from_utf8(&self.preview_content[line_start..end_i]) {
-                                draw_string(buf, screen_w, screen_h, lstr, dx + 22, line_y, COLOR_TEXT_PRI, Some(0x001E_293B));
+                                draw_string_antialiased(buf, screen_w, screen_h, lstr, dx + 22, line_y, COLOR_TEXT_PRI, Some(0x001E_293B));
                                 line_y += 18;
                                 rendered += 1;
                             }
@@ -1335,27 +1336,27 @@ impl FileManagerApp {
                 }
 
                 // [ Fechar ]
-                let fc_x = dx + (dw - 100) / 2;
-                fill_rounded_rect(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, 4, 0x001E_293B);
-                draw_rounded_outline(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, 4, COLOR_BORDER);
-                draw_string(buf, screen_w, screen_h, "Fechar", fc_x + 28, btn_y + 3, COLOR_WHITE, Some(0x001E_293B));
+                let fc_x = dx + (dw - 120) / 2;
+                fill_rounded_rect(buf, screen_w, screen_h, fc_x, btn_y, 120, DIALOG_BTN_H, 8, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, fc_x, btn_y, 120, DIALOG_BTN_H, 8, COLOR_BORDER);
+                draw_string_antialiased(buf, screen_w, screen_h, "Fechar", fc_x + 36, btn_y + 10, COLOR_WHITE, Some(0x001E_293B));
             }
             FileDialogKind::EditFile => {
                 let name = core::str::from_utf8(&self.preview_filename[..self.preview_filename_len]).unwrap_or("arquivo");
-                draw_string(buf, screen_w, screen_h, name, dx + 16, dy + 28, COLOR_CYAN, Some(0x000F_172A));
-                draw_string(buf, screen_w, screen_h, "(Ctrl+S p/ salvar)", dx + 16 + (name.len() * 8) + 8, dy + 28, COLOR_TEXT_MUTED, Some(0x000F_172A));
+                draw_string_antialiased(buf, screen_w, screen_h, name, dx + 16, dy + 34, COLOR_CYAN, Some(0x000F_172A));
+                draw_string_antialiased(buf, screen_w, screen_h, "(Ctrl+S p/ salvar)", dx + 16 + text_width(name) + 12, dy + 34, COLOR_TEXT_MUTED, Some(0x000F_172A));
 
                 // Caixa de texto editável com cantos arredondados
                 let tb_w = dw - 32;
-                let tb_h = 110;
-                fill_rounded_rect(buf, screen_w, screen_h, dx + 16, dy + 46, tb_w, tb_h, 4, 0x001E_293B);
-                draw_rounded_outline(buf, screen_w, screen_h, dx + 16, dy + 46, tb_w, tb_h, 4, COLOR_BORDER_ACT);
+                let tb_h = 114;
+                fill_rounded_rect(buf, screen_w, screen_h, dx + 16, dy + 54, tb_w, tb_h, 6, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, dx + 16, dy + 54, tb_w, tb_h, 6, COLOR_BORDER_ACT);
 
                 let c_len = self.preview_content_len.min(512);
-                let mut line_y = dy + 50;
+                let mut line_y = dy + 60;
                 let mut line_start = 0;
                 let mut rendered = 0;
-                let mut last_x = dx + 22;
+                let mut last_x = dx + 24;
                 for i in 0..c_len {
                     let b = self.preview_content[i];
                     let is_break = b == b'\n' || (i - line_start) >= 36 || i == c_len - 1;
@@ -1363,8 +1364,8 @@ impl FileManagerApp {
                         let end_i = if b == b'\n' { i } else { i + 1 };
                         if end_i > line_start && rendered < 5 {
                             if let Ok(lstr) = core::str::from_utf8(&self.preview_content[line_start..end_i]) {
-                                draw_string(buf, screen_w, screen_h, lstr, dx + 22, line_y, COLOR_TEXT_PRI, Some(0x001E_293B));
-                                last_x = dx + 22 + (lstr.len() * 8);
+                                draw_string_antialiased(buf, screen_w, screen_h, lstr, dx + 24, line_y, COLOR_TEXT_PRI, Some(0x001E_293B));
+                                last_x = dx + 24 + text_width(lstr);
                                 line_y += 18;
                                 rendered += 1;
                             }
@@ -1373,20 +1374,20 @@ impl FileManagerApp {
                     }
                 }
                 if rendered > 0 {
-                    draw_string(buf, screen_w, screen_h, "_", last_x, line_y - 18, COLOR_CYAN_NEON, Some(0x001E_293B));
+                    draw_string_antialiased(buf, screen_w, screen_h, "_", last_x, line_y - 18, COLOR_CYAN_NEON, Some(0x001E_293B));
                 } else {
-                    draw_string(buf, screen_w, screen_h, "_", dx + 22, dy + 50, COLOR_CYAN_NEON, Some(0x001E_293B));
+                    draw_string_antialiased(buf, screen_w, screen_h, "_", dx + 24, dy + 60, COLOR_CYAN_NEON, Some(0x001E_293B));
                 }
 
-                // [ Salvar (Ctrl+S) ]
-                fill_rounded_rect(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, 4, 0x0006_4E3B);
-                draw_rounded_outline(buf, screen_w, screen_h, b0_x, btn_y, b0_w, 20, 4, COLOR_EMERALD);
-                draw_string(buf, screen_w, screen_h, "Salvar (Ctrl+S)", b0_x + 18, btn_y + 3, COLOR_EMERALD, Some(0x0006_4E3B));
+                // [ Salvar (Ctrl+S) ] (Botão 32px, radius 8px)
+                fill_rounded_rect(buf, screen_w, screen_h, b0_x, btn_y, b0_w, DIALOG_BTN_H, 8, 0x0006_4E3B);
+                draw_rounded_outline(buf, screen_w, screen_h, b0_x, btn_y, b0_w, DIALOG_BTN_H, 8, COLOR_EMERALD);
+                draw_string_antialiased(buf, screen_w, screen_h, "Salvar (Ctrl+S)", b0_x + 16, btn_y + 10, COLOR_EMERALD, Some(0x0006_4E3B));
 
-                // [ Fechar ]
-                fill_rounded_rect(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, 4, 0x001E_293B);
-                draw_rounded_outline(buf, screen_w, screen_h, b1_x, btn_y, b1_w, 20, 4, COLOR_BORDER);
-                draw_string(buf, screen_w, screen_h, "Fechar (Esc)", b1_x + 28, btn_y + 3, COLOR_TEXT_PRI, Some(0x001E_293B));
+                // [ Fechar ] (Botão 32px, radius 8px)
+                fill_rounded_rect(buf, screen_w, screen_h, b1_x, btn_y, b1_w, DIALOG_BTN_H, 8, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, b1_x, btn_y, b1_w, DIALOG_BTN_H, 8, COLOR_BORDER);
+                draw_string_antialiased(buf, screen_w, screen_h, "Fechar (Esc)", b1_x + 28, btn_y + 10, COLOR_TEXT_PRI, Some(0x001E_293B));
             }
             FileDialogKind::Properties => {
                 let (name, is_dir, is_elf, is_txt) = if let Some(i) = self.selected_index {
@@ -1399,22 +1400,22 @@ impl FileManagerApp {
                     ("-", false, false, false)
                 };
 
-                draw_string(buf, screen_w, screen_h, "Nome:", dx + 16, dy + 30, COLOR_TEXT_MUTED, Some(0x000F_172A));
-                draw_string(buf, screen_w, screen_h, name, dx + 70, dy + 30, COLOR_CYAN, Some(0x000F_172A));
+                draw_string_antialiased(buf, screen_w, screen_h, "Nome:", dx + 16, dy + 36, COLOR_TEXT_MUTED, Some(0x000F_172A));
+                draw_string_antialiased(buf, screen_w, screen_h, name, dx + 76, dy + 36, COLOR_CYAN, Some(0x000F_172A));
 
-                let type_str = if is_dir { "Pasta de Arquivos" } else if is_elf { "Binario ELF Ring 3" } else if is_txt { "Documento de Texto" } else { "Arquivo de Dados" };
-                draw_string(buf, screen_w, screen_h, "Tipo:", dx + 16, dy + 48, COLOR_TEXT_MUTED, Some(0x000F_172A));
-                draw_string(buf, screen_w, screen_h, type_str, dx + 70, dy + 48, COLOR_TEXT_PRI, Some(0x000F_172A));
+                let type_str = if is_dir { "Pasta de Arquivos" } else if is_elf { "Binário ELF Ring 3" } else if is_txt { "Documento de Texto" } else { "Arquivo de Dados" };
+                draw_string_antialiased(buf, screen_w, screen_h, "Tipo:", dx + 16, dy + 56, COLOR_TEXT_MUTED, Some(0x000F_172A));
+                draw_string_antialiased(buf, screen_w, screen_h, type_str, dx + 76, dy + 56, COLOR_TEXT_PRI, Some(0x000F_172A));
 
                 let mode_str = if self.is_read_only() { "Somente-Leitura (RO)" } else { "Leitura e Escrita (RW)" };
-                draw_string(buf, screen_w, screen_h, "Acesso:", dx + 16, dy + 66, COLOR_TEXT_MUTED, Some(0x000F_172A));
-                draw_string(buf, screen_w, screen_h, mode_str, dx + 70, dy + 66, COLOR_EMERALD, Some(0x000F_172A));
+                draw_string_antialiased(buf, screen_w, screen_h, "Acesso:", dx + 16, dy + 76, COLOR_TEXT_MUTED, Some(0x000F_172A));
+                draw_string_antialiased(buf, screen_w, screen_h, mode_str, dx + 76, dy + 76, COLOR_EMERALD, Some(0x000F_172A));
 
                 // [ Fechar ]
-                let fc_x = dx + (dw - 100) / 2;
-                fill_rounded_rect(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, 4, 0x001E_293B);
-                draw_rounded_outline(buf, screen_w, screen_h, fc_x, btn_y, 100, 20, 4, COLOR_BORDER);
-                draw_string(buf, screen_w, screen_h, "Fechar", fc_x + 28, btn_y + 3, COLOR_WHITE, Some(0x001E_293B));
+                let fc_x = dx + (dw - 120) / 2;
+                fill_rounded_rect(buf, screen_w, screen_h, fc_x, btn_y, 120, DIALOG_BTN_H, 8, 0x001E_293B);
+                draw_rounded_outline(buf, screen_w, screen_h, fc_x, btn_y, 120, DIALOG_BTN_H, 8, COLOR_BORDER);
+                draw_string_antialiased(buf, screen_w, screen_h, "Fechar", fc_x + 36, btn_y + 10, COLOR_WHITE, Some(0x001E_293B));
             }
             FileDialogKind::None => {}
         }
