@@ -5,6 +5,7 @@ pub mod about;
 pub mod settings;
 pub mod disks;
 pub mod software_manager;
+pub mod jpkg;
 
 pub use terminal::TerminalApp;
 pub use files::{FileManagerApp, CachedFileEntry};

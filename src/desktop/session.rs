@@ -1438,6 +1438,10 @@ impl AladdinSession {
                         let rel_y = my.saturating_sub(win.y);
                         let mut storage_adapter = crate::contracts::storage::SystemHostStorageAdapter(sys);
                         self.disks.handle_click(rel_x, rel_y, win.width, win.height, &mut storage_adapter);
+                    } else if win.id == 6 {
+                        let rel_x = mx.saturating_sub(win.x);
+                        let rel_y = my.saturating_sub(win.y);
+                        self.software_mgr.handle_click(rel_x, rel_y, win.width, win.height, sys, vfs);
                     }
                 }
 
@@ -1585,6 +1589,9 @@ impl AladdinSession {
             self.term.handle_key(ch, proc_host);
         } else if top_idx == 3 {
             self.files.handle_key(ch, vfs);
+            self.client_damaged = true;
+        } else if top_idx == 6 {
+            self.software_mgr.handle_key(ch, sys, vfs);
             self.client_damaged = true;
         } else if let Some(term_win) = self.wm.windows[1].as_ref() {
             // Fallback de foco: se o terminal estiver aberto, roteia as teclas para ele
