@@ -495,6 +495,7 @@ impl aladdin::contracts::system::SystemHost for MockSystem {
             dynamic_pages_freed: 5,
             vfs_open_fds: 3,
             vfs_mounted_volumes: 2,
+            ..Default::default()
         }
     }
 
@@ -660,6 +661,7 @@ fn test_telemetry_consistency_and_zero_values() {
                 dynamic_pages_freed: 0,
                 vfs_open_fds: 0,
                 vfs_mounted_volumes: 0,
+                ..Default::default()
             }
         }
         fn yield_cpu(&self) {}
@@ -751,6 +753,7 @@ fn test_system_stats_saturation_and_boundary_safety() {
                 dynamic_pages_freed: usize::MAX,
                 vfs_open_fds: usize::MAX,
                 vfs_mounted_volumes: usize::MAX,
+                ..Default::default()
             }
         }
         fn yield_cpu(&self) {}
@@ -941,6 +944,7 @@ fn test_client_window_lifecycle_and_dispatch_in_session() {
                 dynamic_pages_freed: 0,
                 vfs_open_fds: 0,
                 vfs_mounted_volumes: 0,
+                ..Default::default()
             }
         }
         fn yield_cpu(&self) {}
@@ -1967,6 +1971,7 @@ fn test_system_monitor_network_states_and_adapter_telemetry() {
                 dynamic_pages_freed: 0,
                 vfs_open_fds: 1,
                 vfs_mounted_volumes: 1,
+                ..Default::default()
             }
         }
         fn yield_cpu(&self) {}
@@ -2106,6 +2111,7 @@ fn test_quick_settings_popover_interactions() {
                 dynamic_pages_freed: 0,
                 vfs_open_fds: 2,
                 vfs_mounted_volumes: 1,
+                ..Default::default()
             }
         }
         fn yield_cpu(&self) {}
@@ -2184,6 +2190,7 @@ fn test_app_switcher_hud_lifecycle_and_tab_navigation() {
                 dynamic_pages_freed: 0,
                 vfs_open_fds: 0,
                 vfs_mounted_volumes: 0,
+                ..Default::default()
             }
         }
         fn yield_cpu(&self) {}

@@ -68,11 +68,16 @@ pub fn render_wingpanel(
         // Fundo em cápsula translúcida
         draw_pill(buf, screen_w, screen_h, cap_x, cap_y, right_capsule_w, cap_h, COLOR_SURFACE_L1, COLOR_BORDER_MUTED);
 
-        // CPU Telemetry
+        // CPU Telemetry (Consumo real Zero-Idle: ciclos ativos vs HLT)
         let mut cur_x = cap_x + 10;
         draw_string_telemetry(buf, screen_w, screen_h, "CPU:", cur_x, cap_y + 4, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
         cur_x += 34;
-        let cpu_pct = ((stats.current_tick % 8) + 2) as usize;
+        let total_cycles = stats.cpu_active_cycles + stats.cpu_idle_cycles;
+        let cpu_pct = if total_cycles > 0 {
+            ((stats.cpu_active_cycles * 100) / total_cycles) as usize
+        } else {
+            0
+        };
         draw_label_and_num(buf, screen_w, screen_h, "", cpu_pct, "% | ", cur_x, cap_y + 4, COLOR_CYAN_NEON, Some(COLOR_SURFACE_L1));
         cur_x += 44;
 

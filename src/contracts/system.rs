@@ -41,6 +41,45 @@ pub struct SystemStats {
     pub vfs_mounted_volumes: usize,
     pub net_tx_packets: u64,
     pub net_rx_packets: u64,
+    pub cpu_active_cycles: u64,
+    pub cpu_idle_cycles: u64,
+    pub syscalls_total: u64,
+    pub memory_active_bytes: u64,
+    pub memory_idle_bytes: u64,
+}
+
+impl Default for SystemStats {
+    fn default() -> Self {
+        Self {
+            uptime_secs: 0,
+            task_count: 0,
+            sched_ticks: 0,
+            used_ram_mb: 0,
+            total_ram_mb: 0,
+            current_tick: 0,
+            net_ip: [0; 4],
+            net_adapter: "",
+            net_state_desc: "",
+            jinnwall_active_conns: 0,
+            jinnwall_drops: 0,
+            jinnwall_inspected: 0,
+            jinnwall_accepted: 0,
+            jinnwall_profile: JinnWallProfile::PublicSecure,
+            physical_frames_used: 0,
+            physical_frames_total: 0,
+            dynamic_pages_allocated: 0,
+            dynamic_pages_freed: 0,
+            vfs_open_fds: 0,
+            vfs_mounted_volumes: 0,
+            net_tx_packets: 0,
+            net_rx_packets: 0,
+            cpu_active_cycles: 0,
+            cpu_idle_cycles: 0,
+            syscalls_total: 0,
+            memory_active_bytes: 0,
+            memory_idle_bytes: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

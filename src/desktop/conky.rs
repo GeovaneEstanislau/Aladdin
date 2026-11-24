@@ -7,7 +7,7 @@ use crate::font::*;
 use crate::contracts::system::SystemStats;
 
 pub const CONKY_WIDTH: usize = 256;
-pub const CONKY_HEIGHT: usize = 206;
+pub const CONKY_HEIGHT: usize = 234;
 
 pub fn render_conky_hud(
     buf: &mut [u32],
@@ -51,6 +51,18 @@ pub fn render_conky_hud(
     // Preempção
     draw_string_telemetry(buf, screen_w, screen_h, "Preempção   :", x + 12, row_y, COLOR_TEXT_MUTED, Some(header_bg));
     draw_string_telemetry(buf, screen_w, screen_h, "PIT 100 Hz(10ms)", x + 122, row_y, COLOR_TEXT_PRI, Some(header_bg));
+    row_y += line_step;
+
+    // CPU Zero-Idle
+    let total_c = stats.cpu_active_cycles + stats.cpu_idle_cycles;
+    let cpu_pct = if total_c > 0 { ((stats.cpu_active_cycles * 100) / total_c) as usize } else { 0 };
+    draw_string_telemetry(buf, screen_w, screen_h, "CPU Zero-Idle:", x + 12, row_y, COLOR_TEXT_MUTED, Some(header_bg));
+    draw_label_and_num(buf, screen_w, screen_h, "", cpu_pct, "% (HLT)", x + 122, row_y, COLOR_EMERALD, Some(header_bg));
+    row_y += line_step;
+
+    // Syscalls Total
+    draw_string_telemetry(buf, screen_w, screen_h, "Syscalls    :", x + 12, row_y, COLOR_TEXT_MUTED, Some(header_bg));
+    draw_label_and_num(buf, screen_w, screen_h, "", stats.syscalls_total as usize, " ops", x + 122, row_y, COLOR_CYAN_NEON, Some(header_bg));
     row_y += line_step;
 
     // Ticks APIC

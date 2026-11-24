@@ -26,7 +26,10 @@ impl SystemMonitorApp {
 
         draw_label_and_num(buf, screen_w, screen_h, "Tempo Ativo    : ", stats.uptime_secs, " s (100 Hz APIC)", win_x + 12, win_y + 54, COLOR_TEXT_PRI, Some(COLOR_CARD));
         draw_label_and_num(buf, screen_w, screen_h, "Tarefas Ativas : ", stats.task_count, " processos", win_x + 12, win_y + 70, COLOR_TEXT_PRI, Some(COLOR_CARD));
-        draw_label_and_num(buf, screen_w, screen_h, "Preempções APIC: ", stats.sched_ticks as usize, " ticks", win_x + 12, win_y + 86, COLOR_TEXT_PRI, Some(COLOR_CARD));
+        let total_c = stats.cpu_active_cycles + stats.cpu_idle_cycles;
+        let cpu_pct = if total_c > 0 { ((stats.cpu_active_cycles * 100) / total_c) as usize } else { 0 };
+        let x_cpu = draw_label_and_num(buf, screen_w, screen_h, "CPU Zero-Idle  : ", cpu_pct, " % (HLT) | ", win_x + 12, win_y + 86, COLOR_EMERALD, Some(COLOR_CARD));
+        draw_label_and_num(buf, screen_w, screen_h, "Syscalls: ", stats.syscalls_total as usize, " ops", x_cpu, win_y + 86, COLOR_CYAN_NEON, Some(COLOR_CARD));
 
         let x_ram = draw_label_and_num(buf, screen_w, screen_h, "Memória RAM    : ", stats.used_ram_mb, " MB / ", win_x + 12, win_y + 102, COLOR_TEXT_PRI, Some(COLOR_CARD));
         draw_label_and_num(buf, screen_w, screen_h, "", stats.total_ram_mb, " MB", x_ram, win_y + 102, COLOR_TEXT_PRI, Some(COLOR_CARD));
