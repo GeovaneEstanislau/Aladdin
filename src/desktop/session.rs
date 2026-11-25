@@ -1648,13 +1648,18 @@ impl AladdinSession {
 
             let mouse_moved = (mx != last_mx) || (my != last_my);
             let button_changed = buttons != last_btn;
-            let time_changed = current_ticks.saturating_sub(last_ticks) >= 50; // Atualiza a cada 500ms
 
             // Rastreamento de atividade do usuário (previne execução contínua se ocioso por mais de 60s)
             if mouse_moved || button_changed || key_pressed || dragging_any || self.client_damaged {
                 self.last_user_activity_tick = current_ticks;
             }
             let is_desktop_idle = current_ticks.saturating_sub(self.last_user_activity_tick) > 6000;
+            let refresh_period = if current_ticks.saturating_sub(self.last_user_activity_tick) > 300 {
+                500
+            } else {
+                100
+            };
+            let time_changed = current_ticks.saturating_sub(last_ticks) >= refresh_period;
 
             // Animacao de Motion Wallpaper (Videos) a ~30 FPS com pausa inteligente se o desktop estiver ocluso ou ocioso
             let is_motion_wp = self.settings.wallpaper_id >= 8;
@@ -1697,8 +1702,13 @@ impl AladdinSession {
                 last_mx = mx;
                 last_my = my;
             } else {
-                // Repouso: cede ciclos de CPU
-                sys.yield_cpu();
+                // Repouso orientado a deadline real até a próxima atualização do painel/animação
+                let wait_ticks = if is_motion_wp && !is_desktop_occluded && !is_desktop_idle {
+                    3u64.saturating_sub(current_ticks.saturating_sub(last_motion_ticks)).clamp(1, 3) as u16
+                } else {
+                    refresh_period.saturating_sub(current_ticks.saturating_sub(last_ticks)).clamp(1, 500) as u16
+                };
+                sys.yield_idle_ticks(wait_ticks);
             }
         }
     }

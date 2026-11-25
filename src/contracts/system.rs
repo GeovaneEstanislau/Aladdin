@@ -99,6 +99,10 @@ pub enum CapabilityMode {
 pub trait SystemHost {
     fn stats(&self) -> SystemStats;
     fn yield_cpu(&self);
+    /// Cede a CPU informando o timeout máximo desejado em ticks do kernel (1 tick = 10 ms).
+    fn yield_idle_ticks(&self, _wait_ticks: u16) {
+        self.yield_cpu();
+    }
     fn storage_profile_name(&self) -> &'static str;
     fn cycle_storage_profile(&self);
     fn jinnwall_profile(&self) -> JinnWallProfile;
