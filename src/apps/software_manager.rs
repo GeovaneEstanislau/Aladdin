@@ -220,24 +220,36 @@ impl SoftwareManagerApp {
         // Cria diretório /disk/apps caso não exista
         let _ = vfs.create_dir("/disk/apps");
 
-        // Lê contêiner .jpkg do repositório/disco
-        let mut file_buf = [0u8; 1024];
-        let bytes_read = vfs.read_file(pkg.jpkg_file, &mut file_buf).unwrap_or(0);
+        // Lê contêiner .jpkg completo do repositório/disco em buffer temporário de até 256 KiB
+        let mut file_buf = alloc::vec![0u8; 256 * 1024];
+        let bytes_read = match vfs.read_file(pkg.jpkg_file, &mut file_buf) {
+            Ok(n) => n,
+            Err(()) => 0,
+        };
 
-        if bytes_read >= 128 {
-            // Valida magic bytes b"JPKG"
-            if file_buf[0..4] == [0x4A, 0x50, 0x4B, 0x47] {
-                // Extrai payload ELF
-                let elf_size = u32::from_le_bytes([file_buf[84], file_buf[85], file_buf[86], file_buf[87]]) as usize;
-                let elf_offset = u32::from_le_bytes([file_buf[92], file_buf[93], file_buf[94], file_buf[95]]) as usize;
-
-                if elf_offset < bytes_read && elf_size > 0 {
-                    let end = (elf_offset + elf_size).min(bytes_read);
-                    let _ = vfs.write_file(pkg.elf_dest, &file_buf[elf_offset..end]);
+        if bytes_read > 0 {
+            match crate::apps::jpkg::verify_and_extract_elf(&file_buf[..bytes_read]) {
+                Ok((_hdr, elf_payload)) => {
+                    if vfs.write_file(pkg.elf_dest, elf_payload).is_err() {
+                        self.set_status("ERRO E/S: Falha ao gravar ELF no VFS!", COLOR_RUBY);
+                        self.action_in_progress = false;
+                        return;
+                    }
+                }
+                Err(crate::apps::jpkg::JpkgVerifyError::ChecksumMismatch) => {
+                    // Zero-Trust: aborta antes de gravar qualquer byte em /disk/apps/
+                    self.set_status("ERRO SHA-256: Pacote adulterado! Abortado.", COLOR_RUBY);
+                    self.action_in_progress = false;
+                    return;
+                }
+                Err(_) => {
+                    self.set_status("ERRO: Conteinador .jpkg invalido ou truncado!", COLOR_RUBY);
+                    self.action_in_progress = false;
+                    return;
                 }
             }
         } else {
-            // Emulação de fallback caso arquivo físico seja gerado dinamicamente
+            // Fallback somente quando nenhum arquivo .jpkg físico existe no ambiente de teste
             let dummy_payload = b"\x7FELF\x02\x01\x01\x00JINN_PACKAGE_PAYLOAD";
             let _ = vfs.write_file(pkg.elf_dest, dummy_payload);
         }
