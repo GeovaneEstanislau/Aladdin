@@ -126,6 +126,49 @@ impl DnsTableEntry {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct HotRouteTableEntry {
+    pub hostname: [u8; 96],
+    pub hostname_len: u8,
+    pub dst_ip: [u8; 4],
+    pub next_hop_ip: [u8; 4],
+    pub next_hop_mac: [u8; 6],
+    pub hit_count: u32,
+    pub last_rtt_ticks: u32,
+    pub ttl_remaining_secs: u32,
+    pub is_pinned: bool,
+    pub is_valid: bool,
+    pub is_stale: bool,
+}
+
+impl HotRouteTableEntry {
+    pub const fn empty() -> Self {
+        Self {
+            hostname: [0u8; 96],
+            hostname_len: 0,
+            dst_ip: [0u8; 4],
+            next_hop_ip: [0u8; 4],
+            next_hop_mac: [0u8; 6],
+            hit_count: 0,
+            last_rtt_ticks: 0,
+            ttl_remaining_secs: 0,
+            is_pinned: false,
+            is_valid: false,
+            is_stale: false,
+        }
+    }
+
+    pub fn hostname_str(&self) -> &str {
+        let len = (self.hostname_len as usize).min(96);
+        core::str::from_utf8(&self.hostname[..len]).unwrap_or("")
+    }
+
+    #[inline]
+    pub fn rtt_ms(&self) -> u32 {
+        self.last_rtt_ticks.saturating_mul(10)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DnsServersConfig {
     pub primary: [u8; 4],
@@ -226,4 +269,16 @@ pub trait SystemHost {
     fn dns_resolve_timed_ms(&self, _hostname: &str) -> Result<([u8; 4], u64), &'static str> {
         Err("DNS indisponivel")
     }
+
+    // Métodos de gerenciamento da Tabela de Rotas Mais Usadas (HotRouteTable — DNS + L2/L3 Fast-Path)
+    fn hot_routes_list(&self, _out: &mut [HotRouteTableEntry]) -> usize {
+        0
+    }
+    fn hot_route_pin(&self, _hostname: &str, _ip: Option<[u8; 4]>) -> Result<(), &'static str> {
+        Ok(())
+    }
+    fn hot_routes_flush(&self) -> usize {
+        0
+    }
+    fn sync_persistent_caches(&self) {}
 }

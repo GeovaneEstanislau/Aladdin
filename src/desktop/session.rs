@@ -150,7 +150,38 @@ impl AladdinSession {
     }
 
     pub fn launch_or_focus_browser(&mut self, proc_host: &mut dyn ProcessHost) {
+        self.launch_or_focus_browser_internal(proc_host, None, None);
+    }
+
+    pub fn launch_or_focus_browser_with_url(
+        &mut self,
+        proc_host: &mut dyn ProcessHost,
+        vfs: &dyn VfsHost,
+        url: &str,
+    ) {
+        self.launch_or_focus_browser_internal(proc_host, Some(vfs), Some(url));
+    }
+
+    fn launch_or_focus_browser_internal(
+        &mut self,
+        proc_host: &mut dyn ProcessHost,
+        vfs_opt: Option<&dyn VfsHost>,
+        url_opt: Option<&str>,
+    ) {
         if let Some(win_id) = self.find_browser_window_id() {
+            if let (Some(vfs), Some(url)) = (vfs_opt, url_opt) {
+                let _ = vfs.write_file("/disk/browser/.nav_url", url.as_bytes());
+                let ev = crate::contracts::input::ClientWindowEvent {
+                    event_type: 10, // EVENT_NAVIGATE_PENDING
+                    win_id: win_id as u32,
+                    x: 0,
+                    y: 0,
+                    button_or_key: 0,
+                    modifiers: 0,
+                    timestamp: 0,
+                };
+                self.wm.push_client_event(win_id, ev);
+            }
             if let Some(w) = self.wm.windows[win_id].as_mut() {
                 w.is_open = true;
                 w.is_minimized = false;
@@ -172,7 +203,19 @@ impl AladdinSession {
             }
         }
 
-        match proc_host.spawn_app("/disk/browser.elf") {
+        let mut spawn_buf = [0u8; 128];
+        let spawn_target: &str = if let Some(url) = url_opt {
+            let pfx = b"browser@";
+            spawn_buf[..pfx.len()].copy_from_slice(pfx);
+            let ub = url.as_bytes();
+            let take = ub.len().min(127 - pfx.len());
+            spawn_buf[pfx.len()..pfx.len() + take].copy_from_slice(&ub[..take]);
+            core::str::from_utf8(&spawn_buf[..pfx.len() + take]).unwrap_or("/disk/browser.elf")
+        } else {
+            "/disk/browser.elf"
+        };
+
+        match proc_host.spawn_app(spawn_target) {
             Ok(pid) => {
                 self.browser_pid = Some(pid);
                 self.browser_win_id = None;
@@ -1277,8 +1320,8 @@ impl AladdinSession {
                                 win.height = 364;
                             } else {
                                 self.monitor_tab = 1;
-                                win.width = 510;
-                                win.height = 396;
+                                win.width = 640;
+                                win.height = 430;
                                 self.network_dns.refresh(sys);
                             }
                         } else if self.monitor_tab == 1 {
@@ -1288,6 +1331,10 @@ impl AladdinSession {
                             let ww = win.width;
                             let cur_tick = sys.stats().current_tick;
                             self.network_dns.handle_click(mx, my, wx, body_top, ww, body_h, sys, &mut self.notifications, cur_tick);
+                            let mut url_b = [0u8; 112];
+                            if let Some(url_s) = self.network_dns.take_pending_browser_url(&mut url_b) {
+                                self.launch_or_focus_browser_with_url(proc_host, vfs, url_s);
+                            }
                         }
                     } else if win.id == 1 {
                         // Terminal: botão + Executar Jinn Browser
@@ -1641,6 +1688,10 @@ impl AladdinSession {
         if top_idx == 0 && self.monitor_tab == 1 {
             let cur_tick = sys.stats().current_tick;
             self.network_dns.handle_key(ch, sys, &mut self.notifications, cur_tick);
+            let mut url_b = [0u8; 112];
+            if let Some(url_s) = self.network_dns.take_pending_browser_url(&mut url_b) {
+                self.launch_or_focus_browser_with_url(proc_host, vfs, url_s);
+            }
             self.client_damaged = true;
         } else if top_idx == 1 { // Terminal interativo
             self.term.handle_key(ch, proc_host);
