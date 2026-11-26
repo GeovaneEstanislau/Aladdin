@@ -874,6 +874,27 @@ impl AladdinSession {
             }
         }
 
+        // Arraste interno em janela cliente (ex.: barra de rolagem do Jinn Browser) via EVENT_MOUSE_MOVE
+        if left_clicked && prev_left_clicked && !dragging_any && !resizing_any {
+            let top_idx = self.wm.top_window_id();
+            if let Some(win) = self.wm.windows[top_idx].as_ref() {
+                if win.owner_pid.is_some() && !win.is_minimized && win.is_in_client_area(mx, my) {
+                    let cx = mx.saturating_sub(win.x + 1) as i32;
+                    let cy = my.saturating_sub(win.y + crate::wm::TITLE_BAR_HEIGHT + 1) as i32;
+                    let ev = crate::contracts::input::ClientWindowEvent {
+                        event_type: crate::contracts::input::EVENT_MOUSE_MOVE,
+                        win_id: top_idx as u32,
+                        x: cx,
+                        y: cy,
+                        button_or_key: 1,
+                        modifiers: 0,
+                        timestamp: sys.stats().current_tick,
+                    };
+                    self.wm.push_client_event(top_idx, ev);
+                }
+            }
+        }
+
         // Clique com botão esquerdo (transição de 0 para 1)
         if left_clicked && !prev_left_clicked && !dragging_any && !resizing_any {
             // Modal de Confirmação de Desligamento com Atualizações Offline
