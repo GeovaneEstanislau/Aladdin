@@ -47,6 +47,8 @@ pub struct AladdinSession {
     pub settings: SettingsApp,
     pub disks: DiskManagerApp,
     pub software_mgr: SoftwareManagerApp,
+    pub network_dns: NetworkDnsApp,
+    pub monitor_tab: usize,
     pub mode: CapabilityMode,
     pub start_menu_open: bool,
     pub quick_settings_open: bool,
@@ -82,6 +84,8 @@ impl AladdinSession {
             settings: SettingsApp::new(),
             disks: DiskManagerApp::new(),
             software_mgr: SoftwareManagerApp::new(),
+            network_dns: NetworkDnsApp::new(),
+            monitor_tab: 0,
             mode: CapabilityMode::Balanced,
             start_menu_open: false,
             quick_settings_open: false,
@@ -262,8 +266,8 @@ impl AladdinSession {
     }
 
     fn init_default_windows(&mut self) {
-        // Janela 0: Monitor de Sistema (aberta)
-        self.wm.windows[0] = Some(Window::new(0, "Jinn OS - Monitor de Sistema", 50, 60, 410, 340));
+        // Janela 0: Monitor de Sistema (aberta, com abas Recursos & Rede/DNS)
+        self.wm.windows[0] = Some(Window::new(0, "Jinn OS - Monitor & Rede/DNS", 50, 60, 410, 364));
 
         // Janela 1: Terminal Interativo (aberta e com foco)
         self.wm.windows[1] = Some(Window::new(1, "Terminal Interativo (Ring 3 Ready)", 470, 80, 460, 240));
@@ -426,7 +430,26 @@ impl AladdinSession {
                     }
                 } else {
                     match win.id {
-                        0 => self.monitor.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, &stats),
+                        0 => {
+                            crate::ui::draw_tab_bar(
+                                buf,
+                                screen_w,
+                                screen_h,
+                                win.x + 2,
+                                win.y + crate::wm::TITLE_BAR_HEIGHT + 1,
+                                win.width.saturating_sub(4),
+                                21,
+                                &["Recursos (JAHA)", "Rede & DNS"],
+                                self.monitor_tab,
+                            );
+                            if self.monitor_tab == 1 {
+                                let body_top = win.y + crate::wm::TITLE_BAR_HEIGHT + 24;
+                                let body_h = win.height.saturating_sub(crate::wm::TITLE_BAR_HEIGHT + 26);
+                                self.network_dns.render(buf, screen_w, screen_h, win.x, body_top, win.width, body_h, stats.current_tick);
+                            } else {
+                                self.monitor.render(buf, screen_w, screen_h, win.x, win.y + 20, win.width, win.height, &stats);
+                            }
+                        }
                         1 => self.term.render(buf, screen_w, screen_h, win.x, win.y, win.width, win.height, is_active, stats.current_tick, self.spawn_count),
                         2 => self.about.render(buf, screen_w, screen_h, win.x, win.y),
                         3 => {
@@ -1244,7 +1267,29 @@ impl AladdinSession {
                     }
 
                     // Interações de corpo da janela do sistema
-                    if win.id == 1 {
+                    if win.id == 0 {
+                        let tab_y = win.y + crate::wm::TITLE_BAR_HEIGHT + 1;
+                        if my >= tab_y && my <= tab_y + 21 {
+                            let half_x = win.x + (win.width / 2);
+                            if mx < half_x {
+                                self.monitor_tab = 0;
+                                win.width = 410;
+                                win.height = 364;
+                            } else {
+                                self.monitor_tab = 1;
+                                win.width = 510;
+                                win.height = 396;
+                                self.network_dns.refresh(sys);
+                            }
+                        } else if self.monitor_tab == 1 {
+                            let body_top = win.y + crate::wm::TITLE_BAR_HEIGHT + 24;
+                            let body_h = win.height.saturating_sub(crate::wm::TITLE_BAR_HEIGHT + 26);
+                            let wx = win.x;
+                            let ww = win.width;
+                            let cur_tick = sys.stats().current_tick;
+                            self.network_dns.handle_click(mx, my, wx, body_top, ww, body_h, sys, &mut self.notifications, cur_tick);
+                        }
+                    } else if win.id == 1 {
                         // Terminal: botão + Executar Jinn Browser
                         let btn_y = win.y + win.height - 34;
                         if mx >= win.x + 8 && mx <= win.x + 228 && my >= btn_y && my <= btn_y + 24 {
@@ -1523,6 +1568,14 @@ impl AladdinSession {
             return;
         }
 
+        // Se a aba Rede & DNS do Monitor estiver no topo e com campo de texto/modal focado, consome teclado prioritariamente
+        if self.wm.top_window_id() == 0 && self.monitor_tab == 1 && self.network_dns.is_text_focused() {
+            let cur_tick = sys.stats().current_tick;
+            self.network_dns.handle_key(ch, sys, &mut self.notifications, cur_tick);
+            self.client_damaged = true;
+            return;
+        }
+
         // Alternador de Tarefas (App Switcher HUD)
         if self.app_switcher_open {
             if ch == 0x09 { // Tab: cicla para o próximo item
@@ -1585,7 +1638,11 @@ impl AladdinSession {
             return;
         }
 
-        if top_idx == 1 { // Terminal interativo
+        if top_idx == 0 && self.monitor_tab == 1 {
+            let cur_tick = sys.stats().current_tick;
+            self.network_dns.handle_key(ch, sys, &mut self.notifications, cur_tick);
+            self.client_damaged = true;
+        } else if top_idx == 1 { // Terminal interativo
             self.term.handle_key(ch, proc_host);
         } else if top_idx == 3 {
             self.files.handle_key(ch, vfs);
@@ -1617,6 +1674,7 @@ impl AladdinSession {
         // Atualiza cache inicial de arquivos e carrega preferências salvas
         self.files.refresh_cache(vfs);
         self.init_from_vfs(vfs);
+        self.network_dns.refresh(sys);
 
         let (mut last_mx, mut last_my, mut last_btn) = poll_mouse();
         let mut last_ticks = sys.stats().current_tick;
@@ -1649,17 +1707,15 @@ impl AladdinSession {
             let mouse_moved = (mx != last_mx) || (my != last_my);
             let button_changed = buttons != last_btn;
 
-            // Rastreamento de atividade do usuário (previne execução contínua se ocioso por mais de 60s)
+            // Rastreamento de atividade do usuário e política dinâmica de deadline (Zero-Idle)
             if mouse_moved || button_changed || key_pressed || dragging_any || self.client_damaged {
                 self.last_user_activity_tick = current_ticks;
             }
-            let is_desktop_idle = current_ticks.saturating_sub(self.last_user_activity_tick) > 6000;
-            let refresh_period = if current_ticks.saturating_sub(self.last_user_activity_tick) > 300 {
-                500
-            } else {
-                100
-            };
-            let time_changed = current_ticks.saturating_sub(last_ticks) >= refresh_period;
+            let idle_elapsed = current_ticks.saturating_sub(self.last_user_activity_tick);
+            let is_desktop_idle = idle_elapsed > 1500;
+            let has_active_toasts = self.notifications.active_count(current_ticks) > 0;
+            let ticks_to_next_sec = 100u64.saturating_sub(current_ticks % 100).clamp(1, 100);
+            let ticks_to_next_5s = 500u64.saturating_sub(current_ticks % 500).clamp(1, 500);
 
             // Animacao de Motion Wallpaper (Videos) a ~30 FPS com pausa inteligente se o desktop estiver ocluso ou ocioso
             let is_motion_wp = self.settings.wallpaper_id >= 8;
@@ -1670,11 +1726,16 @@ impl AladdinSession {
                     false
                 }
             });
-            let motion_tick = is_motion_wp && !is_desktop_occluded && !is_desktop_idle && current_ticks.saturating_sub(last_motion_ticks) >= 3;
+            let is_motion_active = is_motion_wp && !is_desktop_occluded && !is_desktop_idle;
+            let motion_tick = is_motion_active && current_ticks.saturating_sub(last_motion_ticks) >= 3;
             if motion_tick {
                 last_motion_ticks = current_ticks;
                 self.wallpaper_anim_frame = self.wallpaper_anim_frame.wrapping_add(1);
             }
+
+            let refresh_period = if idle_elapsed > 300 && !has_active_toasts { 500 } else { 100 };
+            let should_block_indefinitely = is_desktop_idle && !anim_active && !is_motion_active && !has_active_toasts;
+            let time_changed = !should_block_indefinitely && current_ticks.saturating_sub(last_ticks) >= refresh_period;
 
             let need_scene_redraw = button_changed || key_pressed || dragging_any || time_changed || anim_active || self.client_damaged || motion_tick;
 
@@ -1702,11 +1763,15 @@ impl AladdinSession {
                 last_mx = mx;
                 last_my = my;
             } else {
-                // Repouso orientado a deadline real até a próxima atualização do painel/animação
-                let wait_ticks = if is_motion_wp && !is_desktop_occluded && !is_desktop_idle {
+                // Repouso orientado a deadline real até o próximo segundo do relógio ou bloqueio indefinido sem animações
+                let wait_ticks = if is_motion_active {
                     3u64.saturating_sub(current_ticks.saturating_sub(last_motion_ticks)).clamp(1, 3) as u16
+                } else if should_block_indefinitely {
+                    u16::MAX
+                } else if idle_elapsed > 300 && !has_active_toasts {
+                    ticks_to_next_5s as u16
                 } else {
-                    refresh_period.saturating_sub(current_ticks.saturating_sub(last_ticks)).clamp(1, 500) as u16
+                    ticks_to_next_sec as u16
                 };
                 sys.yield_idle_ticks(wait_ticks);
             }

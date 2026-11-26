@@ -96,6 +96,53 @@ pub enum CapabilityMode {
     Advanced,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct DnsTableEntry {
+    pub hostname: [u8; 128],
+    pub hostname_len: u8,
+    pub ipv4: [u8; 4],
+    pub source_upstream: [u8; 4],
+    pub ttl_remaining_secs: u32,
+    pub hits: u32,
+    pub is_static_host: bool,
+}
+
+impl DnsTableEntry {
+    pub const fn empty() -> Self {
+        Self {
+            hostname: [0u8; 128],
+            hostname_len: 0,
+            ipv4: [0u8; 4],
+            source_upstream: [0u8; 4],
+            ttl_remaining_secs: 0,
+            hits: 0,
+            is_static_host: false,
+        }
+    }
+
+    pub fn hostname_str(&self) -> &str {
+        let len = (self.hostname_len as usize).min(128);
+        core::str::from_utf8(&self.hostname[..len]).unwrap_or("")
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DnsServersConfig {
+    pub primary: [u8; 4],
+    pub secondary: [u8; 4],
+    pub fallback: [u8; 4],
+}
+
+impl Default for DnsServersConfig {
+    fn default() -> Self {
+        Self {
+            primary: [1, 1, 1, 1],
+            secondary: [8, 8, 8, 8],
+            fallback: [10, 0, 2, 3],
+        }
+    }
+}
+
 pub trait SystemHost {
     fn stats(&self) -> SystemStats;
     fn yield_cpu(&self);
@@ -155,5 +202,28 @@ pub trait SystemHost {
     }
     fn storage_format_volume(&self, _volume_id: usize, _fs_type: &str) -> Result<(), &'static str> {
         Ok(())
+    }
+
+    // Métodos de gerenciamento da Tabela Local de DNS e upstreams (/disk/net.cfg, /disk/hosts, /disk/dns_cache.db)
+    fn dns_get_servers(&self) -> DnsServersConfig {
+        DnsServersConfig::default()
+    }
+    fn dns_set_servers(&self, _cfg: DnsServersConfig) -> Result<(), &'static str> {
+        Ok(())
+    }
+    fn dns_list_entries(&self, _out: &mut [DnsTableEntry]) -> usize {
+        0
+    }
+    fn dns_add_host(&self, _hostname: &str, _ip: [u8; 4]) -> Result<(), &'static str> {
+        Ok(())
+    }
+    fn dns_remove_host(&self, _hostname: &str) -> Result<(), &'static str> {
+        Ok(())
+    }
+    fn dns_flush_cache(&self) -> usize {
+        0
+    }
+    fn dns_resolve_timed_ms(&self, _hostname: &str) -> Result<([u8; 4], u64), &'static str> {
+        Err("DNS indisponivel")
     }
 }
