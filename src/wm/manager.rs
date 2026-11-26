@@ -136,6 +136,76 @@ impl WindowManager {
 
     pub const MAX_CLIENT_BUFFER_PIXELS: usize = 1920 * 1080;
 
+    /// Sincroniza dimensões de janela cliente (incl. entrada/saída de tela cheia 1024x768)
+    pub fn sync_client_window_size(
+        &mut self,
+        owner_pid: usize,
+        win_id: usize,
+        new_w: usize,
+        new_h: usize,
+        screen_w: usize,
+        screen_h: usize,
+    ) -> Result<bool, WindowOpError> {
+        if win_id >= MAX_WINDOWS { return Err(WindowOpError::NotFound); }
+        if new_w == 0 || new_h == 0 || new_w > 1920 || new_h > 1080 {
+            return Err(WindowOpError::InvalidDimensions);
+        }
+        let new_pixels = new_w.checked_mul(new_h).ok_or(WindowOpError::InvalidDimensions)?;
+        if new_pixels > Self::MAX_CLIENT_BUFFER_PIXELS {
+            return Err(WindowOpError::InvalidDimensions);
+        }
+
+        let entering_fs = new_w == screen_w && new_h == screen_h;
+        {
+            let win = self.windows[win_id].as_mut().ok_or(WindowOpError::NotFound)?;
+            if win.owner_pid != Some(owner_pid) {
+                return Err(WindowOpError::PermissionDenied);
+            }
+            if win.client_width() == new_w && win.client_height() == new_h {
+                return Ok(false);
+            }
+            if entering_fs {
+                if !win.is_fullscreen {
+                    win.saved_x = win.x;
+                    win.saved_y = win.y;
+                    win.saved_width = win.width;
+                    win.saved_height = win.height;
+                }
+                win.is_fullscreen = true;
+                win.is_maximized = false;
+                win.is_snapped_left = false;
+                win.is_snapped_right = false;
+                win.x = 0;
+                win.y = 0;
+                win.width = new_w;
+                win.height = new_h;
+                win.anim_ticks_remaining = 0;
+            } else {
+                if win.is_fullscreen {
+                    win.is_fullscreen = false;
+                    win.x = win.saved_x;
+                    win.y = win.saved_y;
+                }
+                win.width = new_w.saturating_add(2);
+                win.height = new_h.saturating_add(TITLE_BAR_HEIGHT + 2);
+                win.anim_ticks_remaining = 0;
+            }
+        }
+
+        // Libera o buffer antigo antes de reservar o novo tamanho para evitar pico duplo no heap estático
+        self.client_buffers[win_id] = None;
+        let mut buf = alloc::vec::Vec::new();
+        if buf.try_reserve_exact(new_pixels).is_err() {
+            return Err(WindowOpError::InvalidDimensions);
+        }
+        buf.resize(new_pixels, 0x0018_1825);
+        self.client_buffers[win_id] = Some(buf);
+        if entering_fs {
+            self.bring_to_front(win_id);
+        }
+        Ok(true)
+    }
+
     pub fn update_client_buffer(
         &mut self,
         owner_pid: usize,

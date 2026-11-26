@@ -263,6 +263,22 @@ impl AladdinSession {
         res
     }
 
+    pub fn sync_client_window_size(
+        &mut self,
+        owner_pid: usize,
+        win_id: usize,
+        new_w: usize,
+        new_h: usize,
+        screen_w: usize,
+        screen_h: usize,
+    ) -> Result<bool, crate::wm::WindowOpError> {
+        let res = self.wm.sync_client_window_size(owner_pid, win_id, new_w, new_h, screen_w, screen_h);
+        if let Ok(true) = res {
+            self.client_damaged = true;
+        }
+        res
+    }
+
     pub fn update_client_buffer(
         &mut self,
         owner_pid: usize,
@@ -414,46 +430,55 @@ impl AladdinSession {
     ) {
         let stats = sys.stats();
 
-        // 1. Wallpaper procedural, domínio público ou vídeo animado com suporte a múltiplos temas e persistência
-        // Para motion wallpapers (>= 8), utiliza wallpaper_anim_frame acumulado (garante continuidade sem saltos temporais)
-        let anim_tick = if self.settings.wallpaper_id >= 8 {
-            self.wallpaper_anim_frame.wrapping_mul(3)
-        } else {
-            stats.current_tick
-        };
-        render_wallpaper(buf, screen_w, screen_h, self.mode, self.settings.wallpaper_id, anim_tick);
+        let top_idx = self.wm.top_window_id();
+        let top_is_fullscreen = self.wm.windows[top_idx]
+            .map(|w| w.is_open && !w.is_minimized && w.is_fullscreen)
+            .unwrap_or(false);
 
-        // 2. Guia de recorte / Snap Preview ativo (se arrastando janela para as bordas)
-        if let Some(ref snap) = self.active_snap_preview {
-            self.wm.render_snap_preview(buf, screen_w, screen_h, snap.x, snap.y, snap.width, snap.height);
+        if !top_is_fullscreen {
+            // 1. Wallpaper procedural, domínio público ou vídeo animado com suporte a múltiplos temas e persistência
+            // Para motion wallpapers (>= 8), utiliza wallpaper_anim_frame acumulado (garante continuidade sem saltos temporais)
+            let anim_tick = if self.settings.wallpaper_id >= 8 {
+                self.wallpaper_anim_frame.wrapping_mul(3)
+            } else {
+                stats.current_tick
+            };
+            render_wallpaper(buf, screen_w, screen_h, self.mode, self.settings.wallpaper_id, anim_tick);
+
+            // 2. Guia de recorte / Snap Preview ativo (se arrastando janela para as bordas)
+            if let Some(ref snap) = self.active_snap_preview {
+                self.wm.render_snap_preview(buf, screen_w, screen_h, snap.x, snap.y, snap.width, snap.height);
+            }
+
+            // 3. Conky Telemetry HUD Card no canto superior esquerdo
+            render_conky_hud(buf, screen_w, screen_h, &stats, sys.storage_profile_name());
+
+            // 4. Atalhos na Área de Trabalho (Desktop Shortcuts) na coluna direita
+            render_desktop_shortcuts(buf, screen_w, screen_h, mouse_x, mouse_y);
+
+            // 5. Wingpanel superior
+            render_wingpanel(buf, screen_w, screen_h, &stats, sys.storage_profile_name(), self.mode, self.start_menu_open);
+
+            // 6. Marca d'água elegante
+            draw_string(buf, screen_w, screen_h, "Aladdin Desktop 7.0 | Jinn Microkernel x86_64", screen_w.saturating_sub(370), screen_h.saturating_sub(16), COLOR_BORDER, None);
         }
 
-        // 3. Conky Telemetry HUD Card no canto superior esquerdo
-        render_conky_hud(buf, screen_w, screen_h, &stats, sys.storage_profile_name());
-
-        // 4. Atalhos na Área de Trabalho (Desktop Shortcuts) na coluna direita
-        render_desktop_shortcuts(buf, screen_w, screen_h, mouse_x, mouse_y);
-
-        // 5. Wingpanel superior
-        render_wingpanel(buf, screen_w, screen_h, &stats, sys.storage_profile_name(), self.mode, self.start_menu_open);
-
-        // 6. Marca d'água elegante
-        draw_string(buf, screen_w, screen_h, "Aladdin Desktop 7.0 | Jinn Microkernel x86_64", screen_w.saturating_sub(370), screen_h.saturating_sub(16), COLOR_BORDER, None);
-
         // 5. Renderiza janelas em Z-order (do fundo para o topo)
-        let top_idx = self.wm.top_window_id();
         for &win_idx in self.wm.order.iter() {
             if let Some(win) = self.wm.windows[win_idx] {
                 if !win.is_open || win.is_minimized { continue; }
+                if top_is_fullscreen && win_idx != top_idx { continue; }
                 let is_active = win_idx == top_idx;
 
-                self.wm.render_window_chrome(buf, screen_w, screen_h, &win, is_active, self.mode);
+                if !win.is_fullscreen {
+                    self.wm.render_window_chrome(buf, screen_w, screen_h, &win, is_active, self.mode);
+                }
 
                 // Renderiza superfície cliente se for uma janela com buffer próprio (Ring 3 ou externa)
                 if let Some(ref client_buf) = self.wm.client_buffers[win_idx] {
                     let clip = win.client_clip();
-                    let client_x = win.x + 1;
-                    let client_y = win.y + crate::wm::TITLE_BAR_HEIGHT + 1;
+                    let client_x = if win.is_fullscreen { win.x } else { win.x + 1 };
+                    let client_y = if win.is_fullscreen { win.y } else { win.y + crate::wm::TITLE_BAR_HEIGHT + 1 };
                     let client_w = win.client_width();
                     let client_h = win.client_height();
 
@@ -514,7 +539,9 @@ impl AladdinSession {
         }
 
         // 6. Plank Dock inferior
-        render_dock(buf, screen_w, screen_h, mouse_x, mouse_y, &self.wm, self.find_browser_window_id());
+        if !top_is_fullscreen {
+            render_dock(buf, screen_w, screen_h, mouse_x, mouse_y, &self.wm, self.find_browser_window_id());
+        }
 
         // 7. Menu Iniciar popup (se ativo)
         if self.start_menu_open {
@@ -722,8 +749,7 @@ impl AladdinSession {
                 if let Some(win_idx) = self.wm.find_window_at(mx, my) {
                     if let Some(win) = self.wm.windows[win_idx].as_ref() {
                         if win.owner_pid.is_some() && win.is_in_client_area(mx, my) {
-                            let cx = mx.saturating_sub(win.x + 1) as i32;
-                            let cy = my.saturating_sub(win.y + crate::wm::TITLE_BAR_HEIGHT + 1) as i32;
+                            let (cx, cy) = win.client_pos_from_screen(mx, my);
                             let ev = crate::contracts::input::ClientWindowEvent {
                                 event_type: crate::contracts::input::EVENT_MOUSE_UP,
                                 win_id: win_idx as u32,
@@ -879,8 +905,7 @@ impl AladdinSession {
             let top_idx = self.wm.top_window_id();
             if let Some(win) = self.wm.windows[top_idx].as_ref() {
                 if win.owner_pid.is_some() && !win.is_minimized && win.is_in_client_area(mx, my) {
-                    let cx = mx.saturating_sub(win.x + 1) as i32;
-                    let cy = my.saturating_sub(win.y + crate::wm::TITLE_BAR_HEIGHT + 1) as i32;
+                    let (cx, cy) = win.client_pos_from_screen(mx, my);
                     let ev = crate::contracts::input::ClientWindowEvent {
                         event_type: crate::contracts::input::EVENT_MOUSE_MOVE,
                         win_id: top_idx as u32,
@@ -1014,8 +1039,12 @@ impl AladdinSession {
                 }
             }
 
+            let top_is_fullscreen = self.wm.windows[self.wm.top_window_id()]
+                .map(|w| w.is_open && !w.is_minimized && w.is_fullscreen)
+                .unwrap_or(false);
+
             // 2. Wingpanel superior (y: 0..28)
-            if my < 28 {
+            if !top_is_fullscreen && my < 28 {
                 // Sair Button no extremo direito
                 let exit_x = screen_w.saturating_sub(68);
                 if mx >= exit_x {
@@ -1041,7 +1070,7 @@ impl AladdinSession {
             }
 
             // 3. Menu Iniciar popup
-            if self.start_menu_open {
+            if !top_is_fullscreen && self.start_menu_open {
                 if mx >= MENU_X && mx <= MENU_X + MENU_W && my >= MENU_Y && my <= MENU_Y + MENU_H {
                     if my >= MENU_Y + 28 {
                         let item_idx = (my - (MENU_Y + 28)) / 26;
@@ -1100,7 +1129,7 @@ impl AladdinSession {
             // 4. Cairo-Dock flutuante inferior
             let dock_x = (screen_w / 2).saturating_sub(crate::desktop::dock::DOCK_WIDTH / 2);
             let dock_y = screen_h.saturating_sub(crate::desktop::dock::DOCK_HEIGHT + 10);
-            if my >= dock_y && my <= dock_y + crate::desktop::dock::DOCK_HEIGHT && mx >= dock_x && mx <= dock_x + crate::desktop::dock::DOCK_WIDTH {
+            if !top_is_fullscreen && my >= dock_y && my <= dock_y + crate::desktop::dock::DOCK_HEIGHT && mx >= dock_x && mx <= dock_x + crate::desktop::dock::DOCK_WIDTH {
                 let rel_x = mx.saturating_sub(dock_x + 20);
                 let slot_idx = rel_x / 53;
                 let top_id = self.wm.top_window_id();
@@ -1317,8 +1346,7 @@ impl AladdinSession {
 
                     // Se for janela cliente e o clique ocorreu na área interna de desenho
                     if win.owner_pid.is_some() && win.is_in_client_area(mx, my) {
-                        let cx = mx.saturating_sub(win.x + 1) as i32;
-                        let cy = my.saturating_sub(win.y + crate::wm::TITLE_BAR_HEIGHT + 1) as i32;
+                        let (cx, cy) = win.client_pos_from_screen(mx, my);
                         client_ev_to_push = Some(crate::contracts::input::ClientWindowEvent {
                             event_type: crate::contracts::input::EVENT_MOUSE_DOWN,
                             win_id: clicked_idx as u32,

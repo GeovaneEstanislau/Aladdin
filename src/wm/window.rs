@@ -34,6 +34,7 @@ pub struct Window {
     pub is_open: bool,
     pub is_minimized: bool,
     pub is_maximized: bool,
+    pub is_fullscreen: bool,
     pub is_snapped_left: bool,
     pub is_snapped_right: bool,
     pub saved_x: usize,
@@ -86,6 +87,7 @@ impl Window {
             is_open: true,
             is_minimized: false,
             is_maximized: false,
+            is_fullscreen: false,
             is_snapped_left: false,
             is_snapped_right: false,
             saved_x: x,
@@ -128,11 +130,11 @@ impl Window {
     }
 
     pub fn client_width(&self) -> usize {
-        self.width.saturating_sub(2)
+        if self.is_fullscreen { self.width } else { self.width.saturating_sub(2) }
     }
 
     pub fn client_height(&self) -> usize {
-        self.height.saturating_sub(TITLE_BAR_HEIGHT + 2)
+        if self.is_fullscreen { self.height } else { self.height.saturating_sub(TITLE_BAR_HEIGHT + 2) }
     }
 
     pub fn bounds(&self) -> DirtyRect {
@@ -191,8 +193,19 @@ impl Window {
         true
     }
 
+    pub fn client_pos_from_screen(&self, px: usize, py: usize) -> (i32, i32) {
+        if self.is_fullscreen {
+            (px.saturating_sub(self.x) as i32, py.saturating_sub(self.y) as i32)
+        } else {
+            (px.saturating_sub(self.x + 1) as i32, py.saturating_sub(self.y + TITLE_BAR_HEIGHT + 1) as i32)
+        }
+    }
+
     /// Retorna a região de recorte da área de cliente (interior da janela)
     pub fn client_clip(&self) -> ClipRect {
+        if self.is_fullscreen {
+            return ClipRect::new(self.x, self.y, self.x + self.width, self.y + self.height);
+        }
         let x0 = self.x + 1;
         let y0 = self.y + TITLE_BAR_HEIGHT + 1;
         let x1 = (self.x + self.width).saturating_sub(1);
@@ -206,26 +219,26 @@ impl Window {
     }
 
     pub fn is_in_title_bar(&self, px: usize, py: usize) -> bool {
-        if !self.contains_point(px, py) { return false; }
+        if self.is_fullscreen || !self.contains_point(px, py) { return false; }
         py < self.y + TITLE_BAR_HEIGHT
     }
 
     pub fn is_in_min_btn(&self, px: usize, py: usize) -> bool {
-        if !self.can_minimize { return false; }
+        if self.is_fullscreen || !self.can_minimize { return false; }
         let btn_x = self.x + self.width.saturating_sub(64);
         let btn_y = self.y + (TITLE_BAR_HEIGHT.saturating_sub(BTN_SIZE)) / 2;
         px >= btn_x && px < btn_x + BTN_SIZE && py >= btn_y && py < btn_y + BTN_SIZE
     }
 
     pub fn is_in_max_btn(&self, px: usize, py: usize) -> bool {
-        if !self.can_maximize { return false; }
+        if self.is_fullscreen || !self.can_maximize { return false; }
         let btn_x = self.x + self.width.saturating_sub(44);
         let btn_y = self.y + (TITLE_BAR_HEIGHT.saturating_sub(BTN_SIZE)) / 2;
         px >= btn_x && px < btn_x + BTN_SIZE && py >= btn_y && py < btn_y + BTN_SIZE
     }
 
     pub fn is_in_close_btn(&self, px: usize, py: usize) -> bool {
-        if !self.can_close { return false; }
+        if self.is_fullscreen || !self.can_close { return false; }
         let btn_x = self.x + self.width.saturating_sub(24);
         let btn_y = self.y + (TITLE_BAR_HEIGHT.saturating_sub(BTN_SIZE)) / 2;
         px >= btn_x && px < btn_x + BTN_SIZE && py >= btn_y && py < btn_y + BTN_SIZE
@@ -233,6 +246,7 @@ impl Window {
 
     pub fn is_in_client_area(&self, px: usize, py: usize) -> bool {
         if !self.contains_point(px, py) { return false; }
+        if self.is_fullscreen { return true; }
         let client_y0 = self.y + TITLE_BAR_HEIGHT;
         let client_y1 = (self.y + self.height).saturating_sub(1);
         let client_x0 = self.x + 1;
@@ -242,7 +256,7 @@ impl Window {
 
     /// Retorna a zona de agarre para redimensionamento (resize grip de 6px)
     pub fn resize_grip_at(&self, px: usize, py: usize) -> ResizeGrip {
-        if !self.is_open || self.is_minimized || self.is_maximized || self.is_snapped_left || self.is_snapped_right {
+        if !self.is_open || self.is_minimized || self.is_maximized || self.is_fullscreen || self.is_snapped_left || self.is_snapped_right {
             return ResizeGrip::None;
         }
         if px < self.x || px >= self.x + self.width || py < self.y || py >= self.y + self.height {
