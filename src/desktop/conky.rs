@@ -50,7 +50,7 @@ pub fn render_conky_hud(
 
     // Preempção
     draw_string_telemetry(buf, screen_w, screen_h, "Preempção   :", x + 12, row_y, COLOR_TEXT_MUTED, Some(header_bg));
-    draw_string_telemetry(buf, screen_w, screen_h, "PIT 100 Hz(10ms)", x + 122, row_y, COLOR_TEXT_PRI, Some(header_bg));
+    draw_string_telemetry(buf, screen_w, screen_h, "LAPIC One-Shot", x + 122, row_y, COLOR_EMERALD, Some(header_bg));
     row_y += line_step;
 
     // CPU Zero-Idle

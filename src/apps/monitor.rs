@@ -24,7 +24,8 @@ impl SystemMonitorApp {
     ) {
         draw_string(buf, screen_w, screen_h, "--- Recursos do Kernel (Ring 0) ---", win_x + 12, win_y + 36, COLOR_CYAN, Some(COLOR_CARD));
 
-        draw_label_and_num(buf, screen_w, screen_h, "Tempo Ativo    : ", stats.uptime_secs, " s (100 Hz APIC)", win_x + 12, win_y + 54, COLOR_TEXT_PRI, Some(COLOR_CARD));
+        let x_up = draw_label_and_num(buf, screen_w, screen_h, "Tempo Ativo    : ", stats.uptime_secs, "s | ", win_x + 12, win_y + 54, COLOR_TEXT_PRI, Some(COLOR_CARD));
+        draw_label_and_num(buf, screen_w, screen_h, "OneShot:", stats.sched_ticks as usize, " irq", x_up, win_y + 54, COLOR_EMERALD, Some(COLOR_CARD));
         draw_label_and_num(buf, screen_w, screen_h, "Tarefas Ativas : ", stats.task_count, " processos", win_x + 12, win_y + 70, COLOR_TEXT_PRI, Some(COLOR_CARD));
         let total_c = stats.cpu_active_cycles + stats.cpu_idle_cycles;
         let cpu_pct = if total_c > 0 { ((stats.cpu_active_cycles * 100) / total_c) as usize } else { 0 };

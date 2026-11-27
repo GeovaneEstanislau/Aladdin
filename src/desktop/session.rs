@@ -1812,7 +1812,7 @@ impl AladdinSession {
                 self.last_user_activity_tick = current_ticks;
             }
             let idle_elapsed = current_ticks.saturating_sub(self.last_user_activity_tick);
-            let is_desktop_idle = idle_elapsed > 1500;
+            let is_desktop_idle = idle_elapsed > 300;
             let has_active_toasts = self.notifications.active_count(current_ticks) > 0;
             let ticks_to_next_sec = 100u64.saturating_sub(current_ticks % 100).clamp(1, 100);
             let ticks_to_next_5s = 500u64.saturating_sub(current_ticks % 500).clamp(1, 500);
@@ -1833,7 +1833,7 @@ impl AladdinSession {
                 self.wallpaper_anim_frame = self.wallpaper_anim_frame.wrapping_add(1);
             }
 
-            let refresh_period = if idle_elapsed > 300 && !has_active_toasts { 500 } else { 100 };
+            let refresh_period = if idle_elapsed > 150 && !has_active_toasts { 500 } else { 100 };
             let should_block_indefinitely = is_desktop_idle && !anim_active && !is_motion_active && !has_active_toasts;
             let time_changed = !should_block_indefinitely && current_ticks.saturating_sub(last_ticks) >= refresh_period;
 
@@ -1868,7 +1868,7 @@ impl AladdinSession {
                     3u64.saturating_sub(current_ticks.saturating_sub(last_motion_ticks)).clamp(1, 3) as u16
                 } else if should_block_indefinitely {
                     u16::MAX
-                } else if idle_elapsed > 300 && !has_active_toasts {
+                } else if idle_elapsed > 150 && !has_active_toasts {
                     ticks_to_next_5s as u16
                 } else {
                     ticks_to_next_sec as u16
