@@ -188,6 +188,15 @@ impl WindowManager {
                 }
                 win.width = new_w.saturating_add(2);
                 win.height = new_h.saturating_add(TITLE_BAR_HEIGHT + 2);
+                if !win.is_maximized {
+                    let safe_dock_top = screen_h.saturating_sub(crate::desktop::dock::DOCK_HEIGHT + 12);
+                    let max_y = safe_dock_top
+                        .saturating_sub(win.height)
+                        .max(crate::desktop::wingpanel::WINGPANEL_HEIGHT + 2);
+                    if win.y > max_y {
+                        win.y = max_y;
+                    }
+                }
                 win.anim_ticks_remaining = 0;
             }
         }

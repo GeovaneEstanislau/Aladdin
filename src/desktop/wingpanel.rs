@@ -6,6 +6,23 @@ use crate::font::*;
 use crate::contracts::system::{CapabilityMode, SystemStats};
 
 pub const WINGPANEL_HEIGHT: usize = 28;
+pub const EXIT_BTN_W: usize = 72;
+
+#[inline]
+pub fn exit_btn_x(screen_w: usize) -> usize {
+    screen_w.saturating_sub(EXIT_BTN_W + 8)
+}
+
+#[inline]
+pub fn right_capsule_bounds(screen_w: usize) -> Option<(usize, usize)> {
+    let cap_w = 468;
+    let ex = exit_btn_x(screen_w);
+    if ex > cap_w + 430 {
+        Some((ex.saturating_sub(cap_w + 8), cap_w))
+    } else {
+        None
+    }
+}
 
 pub fn render_wingpanel(
     buf: &mut [u32],
@@ -58,49 +75,61 @@ pub fn render_wingpanel(
     draw_string_antialiased(buf, screen_w, screen_h, "| x86_64 Bare-Metal |", brand_x + 168, brand_y, COLOR_TEXT_MUTED, None);
     draw_string_antialiased(buf, screen_w, screen_h, "GitHub", brand_x + 344, brand_y, COLOR_TEXT_SEC, None);
 
-    // 3. Lado Direito: Cápsula de Telemetria e Monitor do Sistema
-    let right_capsule_w = 460;
-    if screen_w > right_capsule_w + 440 {
-        let cap_x = screen_w.saturating_sub(right_capsule_w + 12);
+    // 3. Lado Direito: Cápsula de Telemetria e Monitor do Sistema (desacoplada do botão [X] Sair)
+    if let Some((cap_x, right_capsule_w)) = right_capsule_bounds(screen_w) {
         let cap_y = 4;
         let cap_h = 20;
+        let cap_max_x = cap_x + right_capsule_w.saturating_sub(6);
 
         // Fundo em cápsula translúcida
         draw_pill(buf, screen_w, screen_h, cap_x, cap_y, right_capsule_w, cap_h, COLOR_SURFACE_L1, COLOR_BORDER_MUTED);
 
+        let sep = |buf: &mut [u32], cur_x: usize| -> usize {
+            let sx = (cur_x + 4) as isize;
+            draw_line(buf, screen_w, screen_h, sx, (cap_y + 4) as isize, sx, (cap_y + cap_h - 4) as isize, COLOR_BORDER_MUTED);
+            cur_x + 9
+        };
+
         // CPU Telemetry (Consumo real Zero-Idle: ciclos ativos vs HLT)
-        let mut cur_x = cap_x + 10;
+        let mut cur_x = cap_x + 8;
         draw_string_telemetry(buf, screen_w, screen_h, "CPU:", cur_x, cap_y + 4, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
-        cur_x += 34;
+        cur_x += text_width("CPU:");
         let total_cycles = stats.cpu_active_cycles + stats.cpu_idle_cycles;
         let cpu_pct = if total_cycles > 0 {
             ((stats.cpu_active_cycles * 100) / total_cycles) as usize
         } else {
             0
         };
-        draw_label_and_num(buf, screen_w, screen_h, "", cpu_pct, "% | ", cur_x, cap_y + 4, COLOR_CYAN_NEON, Some(COLOR_SURFACE_L1));
-        cur_x += 44;
+        cur_x = draw_label_and_num(buf, screen_w, screen_h, "", cpu_pct, "%", cur_x, cap_y + 4, COLOR_CYAN_NEON, Some(COLOR_SURFACE_L1));
+        cur_x = sep(buf, cur_x);
 
         // RAM Telemetry
         draw_string_telemetry(buf, screen_w, screen_h, "RAM:", cur_x, cap_y + 4, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
-        cur_x += 34;
-        draw_label_and_num(buf, screen_w, screen_h, "", stats.used_ram_mb, "/", cur_x, cap_y + 4, COLOR_EMERALD, Some(COLOR_SURFACE_L1));
-        cur_x += 36;
-        draw_label_and_num(buf, screen_w, screen_h, "", stats.total_ram_mb, "MB | ", cur_x, cap_y + 4, COLOR_EMERALD, Some(COLOR_SURFACE_L1));
-        cur_x += 54;
+        cur_x += text_width("RAM:");
+        cur_x = draw_label_and_num(buf, screen_w, screen_h, "", stats.used_ram_mb, "/", cur_x, cap_y + 4, COLOR_EMERALD, Some(COLOR_SURFACE_L1));
+        cur_x = draw_label_and_num(buf, screen_w, screen_h, "", stats.total_ram_mb, "MB", cur_x, cap_y + 4, COLOR_EMERALD, Some(COLOR_SURFACE_L1));
+        cur_x = sep(buf, cur_x);
 
         // SMP Cores & Storage
-        draw_string_telemetry(buf, screen_w, screen_h, "4 Cores | ", cur_x, cap_y + 4, COLOR_AMBER, Some(COLOR_SURFACE_L1));
-        cur_x += 80;
+        let cores_lbl = "4 Cores";
+        draw_string_telemetry(buf, screen_w, screen_h, cores_lbl, cur_x, cap_y + 4, COLOR_AMBER, Some(COLOR_SURFACE_L1));
+        cur_x += text_width(cores_lbl);
+        cur_x = sep(buf, cur_x);
 
-        draw_string_telemetry(buf, screen_w, screen_h, storage_profile, cur_x, cap_y + 4, COLOR_TEXT_SEC, Some(COLOR_SURFACE_L1));
-        cur_x += text_width(storage_profile) + 8;
+        let up_reserve = 72;
+        if cur_x + text_width(storage_profile) + 9 + up_reserve <= cap_max_x {
+            draw_string_telemetry(buf, screen_w, screen_h, storage_profile, cur_x, cap_y + 4, COLOR_TEXT_SEC, Some(COLOR_SURFACE_L1));
+            cur_x += text_width(storage_profile);
+            cur_x = sep(buf, cur_x);
+        }
 
-        draw_label_and_num(buf, screen_w, screen_h, "Up:", stats.uptime_secs as usize, "s", cur_x, cap_y + 4, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
+        if cur_x + 48 <= cap_max_x {
+            draw_label_and_num(buf, screen_w, screen_h, "Up:", stats.uptime_secs as usize, "s", cur_x, cap_y + 4, COLOR_TEXT_MUTED, Some(COLOR_SURFACE_L1));
+        }
     }
 
-    // 4. Botão Sair [X] no extremo direito
-    let exit_x = screen_w.saturating_sub(68);
-    draw_pill(buf, screen_w, screen_h, exit_x, 4, 60, 20, COLOR_RUBY, 0x00F8_7171);
+    // 4. Botão Sair [X] no extremo direito com margem isolada
+    let exit_x = exit_btn_x(screen_w);
+    draw_pill(buf, screen_w, screen_h, exit_x, 4, EXIT_BTN_W, 20, COLOR_RUBY, 0x00F8_7171);
     draw_string_antialiased(buf, screen_w, screen_h, "[X] Sair", exit_x + 4, 8, COLOR_WHITE, Some(COLOR_RUBY));
 }

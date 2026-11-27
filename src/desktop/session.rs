@@ -251,8 +251,13 @@ impl AladdinSession {
         client_h: usize,
     ) -> Result<usize, ()> {
         let count = self.wm.windows.iter().filter(|w| w.is_some()).count();
-        let x = 80 + (count * 28);
-        let y = 60 + (count * 24);
+        let total_h = client_h.saturating_add(crate::wm::TITLE_BAR_HEIGHT + 4);
+        let safe_dock_top = 768usize.saturating_sub(crate::desktop::dock::DOCK_HEIGHT + 14);
+        let max_y = safe_dock_top
+            .saturating_sub(total_h)
+            .max(crate::desktop::wingpanel::WINGPANEL_HEIGHT + 4);
+        let x = (80 + (count * 28)).min(1024usize.saturating_sub(client_w.saturating_add(16)));
+        let y = (60 + (count * 24)).min(max_y);
         let res = self.wm.create_client_window(owner_pid, title, x, y, client_w, client_h);
         if let Ok(win_id) = res {
             self.client_damaged = true;
@@ -672,17 +677,19 @@ impl AladdinSession {
                         any_drag_ended = true;
 
                         // Aplica o encaixe (Snap) se foi solto próximo aos limites da tela
+                        let top_h = crate::desktop::wingpanel::WINGPANEL_HEIGHT;
+                        let dock_clearance = crate::desktop::dock::DOCK_HEIGHT + 12;
                         let mut snapped = false;
                         if mx <= 16 {
-                            win.snap_left(screen_w, screen_h, 26, 54);
+                            win.snap_left(screen_w, screen_h, top_h, dock_clearance);
                             self.notifications.post(b'<', "Janela Encaixada", "Ajustada à metade esquerda da tela", COLOR_CYAN_NEON, 200, sys.stats().current_tick);
                             snapped = true;
                         } else if mx >= screen_w.saturating_sub(16) {
-                            win.snap_right(screen_w, screen_h, 26, 54);
+                            win.snap_right(screen_w, screen_h, top_h, dock_clearance);
                             self.notifications.post(b'>', "Janela Encaixada", "Ajustada à metade direita da tela", COLOR_CYAN_NEON, 200, sys.stats().current_tick);
                             snapped = true;
                         } else if my <= 32 {
-                            win.toggle_maximize(screen_w, screen_h, 26, 54);
+                            win.toggle_maximize(screen_w, screen_h, top_h, dock_clearance);
                             self.notifications.post(b'^', "Janela Maximizada", "Expandida para preencher a tela", COLOR_EMERALD, 200, sys.stats().current_tick);
                             snapped = true;
                         }
@@ -1046,7 +1053,7 @@ impl AladdinSession {
             // 2. Wingpanel superior (y: 0..28)
             if !top_is_fullscreen && my < 28 {
                 // Sair Button no extremo direito
-                let exit_x = screen_w.saturating_sub(68);
+                let exit_x = crate::desktop::wingpanel::exit_btn_x(screen_w);
                 if mx >= exit_x {
                     self.should_exit = true;
                     return (false, None);
@@ -1058,9 +1065,7 @@ impl AladdinSession {
                     return (false, None);
                 }
                 // Cápsula de telemetria à direita abre Centro de Controle Rápido
-                let right_capsule_w = 460;
-                if screen_w > right_capsule_w + 440 {
-                    let cap_x = screen_w.saturating_sub(right_capsule_w + 12);
+                if let Some((cap_x, right_capsule_w)) = crate::desktop::wingpanel::right_capsule_bounds(screen_w) {
                     if mx >= cap_x && mx <= cap_x + right_capsule_w {
                         self.quick_settings_open = !self.quick_settings_open;
                         self.start_menu_open = false;
@@ -1294,7 +1299,12 @@ impl AladdinSession {
                         return (false, None);
                     }
                     if win.is_in_max_btn(mx, my) {
-                        let damage = win.toggle_maximize(screen_w, screen_h, 26, 54);
+                        let damage = win.toggle_maximize(
+                            screen_w,
+                            screen_h,
+                            crate::desktop::wingpanel::WINGPANEL_HEIGHT,
+                            crate::desktop::dock::DOCK_HEIGHT + 12,
+                        );
                         if win.owner_pid.is_some() {
                             let client_w = win.client_width();
                             let client_h = win.client_height();
